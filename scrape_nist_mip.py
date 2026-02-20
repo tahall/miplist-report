@@ -328,11 +328,11 @@ def print_changes(publish_date):
 
 
 def install_cron():
-    """Install a daily 8 AM cron job to run this script."""
+    """Install a daily 4 AM Eastern cron job to run this script."""
     script_path = os.path.abspath(__file__)
     workdir = os.path.dirname(script_path)
     log_file = os.path.join(workdir, "scrape_nist_mip.log")
-    cron_line = f"0 8 * * * cd {workdir} && python3 {script_path} >> {log_file} 2>&1"
+    cron_line = f"TZ=America/New_York 0 4 * * * cd {workdir} && python3 {script_path} >> {log_file} 2>&1"
 
     result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
     existing = result.stdout if result.returncode == 0 else ""
