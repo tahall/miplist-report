@@ -82,7 +82,7 @@ def print_summary(publish_date, not_displayed, rows):
         print(f"  {status:<30} {count}")
 
 
-def save_to_db(publish_date, rows, verbose=False):
+def save_to_db(publish_date, rows, not_displayed=0, verbose=False):
     """Save scraped data to SQLite, replacing any existing data for the same publish date."""
     if verbose:
         print(f"  Saving {len(rows)} rows for publish date {publish_date} to {DB_FILE}...")
@@ -98,6 +98,12 @@ def save_to_db(publish_date, rows, verbose=False):
             status TEXT
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS not_displayed (
+            publish_date TEXT PRIMARY KEY,
+            count INTEGER NOT NULL DEFAULT 0
+        )
+    """)
     cur.execute("DELETE FROM modules WHERE publish_date = ?", (publish_date,))
     for row in rows:
         if len(row) >= 4:
@@ -105,6 +111,10 @@ def save_to_db(publish_date, rows, verbose=False):
                 "INSERT INTO modules (publish_date, module_name, vendor_name, standard, status) VALUES (?, ?, ?, ?, ?)",
                 (publish_date, row[0], row[1], row[2], row[3]),
             )
+    cur.execute(
+        "INSERT OR REPLACE INTO not_displayed (publish_date, count) VALUES (?, ?)",
+        (publish_date, not_displayed),
+    )
     conn.commit()
     conn.close()
 
@@ -222,7 +232,7 @@ def scrape_from_wayback(from_date_str, to_date_str=None, verbose=False):
 
         print(f"\n  [{i+1}/{len(snapshots)}] Snapshot {timestamp}: NEW publish date {publish_date}")
         print_summary(publish_date, not_displayed, rows)
-        save_to_db(publish_date, rows, verbose=verbose)
+        save_to_db(publish_date, rows, not_displayed=not_displayed, verbose=verbose)
         print(f"  Saved to {DB_FILE}")
         print_changes(publish_date)
 
@@ -245,7 +255,7 @@ def scrape_modules_in_process(verbose=False):
         sys.exit(1)
 
     print_summary(publish_date, not_displayed, rows)
-    save_to_db(publish_date, rows, verbose=verbose)
+    save_to_db(publish_date, rows, not_displayed=not_displayed, verbose=verbose)
     print(f"\nSaved to {DB_FILE}")
     print_changes(publish_date)
     return rows

@@ -14,10 +14,20 @@ STATUS_COLORS = {
     "Coordination":   "#59a14f",
     "Finalization":   "#9467bd",
     "On Hold":        "#e05c5c",
+    "Not Displayed":  "#bab0ac",
 }
 DEFAULT_COLOR = "#bab0ac"
 
-ALL_STATUSES = ["Review Pending", "In Review", "Coordination", "Finalization", "On Hold"]
+ALL_STATUSES = ["Review Pending", "In Review", "Coordination", "Finalization", "On Hold", "Not Displayed"]
+
+
+def subtract_months(dt, n):
+    """Return dt shifted back by n calendar months."""
+    import calendar
+    total = dt.year * 12 + (dt.month - 1) - n
+    year, month = total // 12, total % 12 + 1
+    day = min(dt.day, calendar.monthrange(year, month)[1])
+    return datetime(year, month, day)
 
 
 def normalize_status(raw):
@@ -45,6 +55,15 @@ def load_data():
         norm = normalize_status(status)
         counts.setdefault(pub_date, {})
         counts[pub_date][norm] = counts[pub_date].get(norm, 0) + n
+
+    # Not-displayed counts per publish date
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='not_displayed'")
+    if cur.fetchone():
+        cur.execute("SELECT publish_date, count FROM not_displayed")
+        for pub_date, nd_count in cur.fetchall():
+            if nd_count:
+                counts.setdefault(pub_date, {})
+                counts[pub_date]["Not Displayed"] = nd_count
 
     # Full rows for change detection
     cur.execute("SELECT publish_date, module_name, vendor_name, standard, status FROM modules")
@@ -81,7 +100,11 @@ def compute_changes(dates, all_rows):
 def build_chart_data(dates, counts):
     datasets = []
     for status in ALL_STATUSES:
-        data = [counts.get(d, {}).get(status, 0) for d in dates]
+        data = [
+            {"x": datetime.strptime(d, "%m/%d/%Y").strftime("%Y-%m-%d"),
+             "y": counts.get(d, {}).get(status, 0)}
+            for d in dates
+        ]
         datasets.append({
             "label": status,
             "data": data,
@@ -137,15 +160,22 @@ def changes_html(prev_date, new_date, added, removed, changed):
     return "".join(p for p in parts if p)
 
 
-def generate_html(dates, counts, all_rows):
-    prev_date, new_date, added, removed, changed = compute_changes(dates, all_rows)
-    datasets = build_chart_data(dates, counts)
+def generate_html(dates, counts, all_rows, chart_dates=None):
+    if chart_dates is None:
+        chart_dates = dates
 
-    chart_labels = json.dumps(dates)
+    prev_date, new_date, added, removed, changed = compute_changes(dates, all_rows)
+    datasets = build_chart_data(chart_dates, counts)
+
     chart_datasets = json.dumps(datasets)
 
-    totals = [sum(counts.get(d, {}).values()) for d in dates]
+    totals = [sum(counts.get(d, {}).values()) for d in chart_dates]
     y_max = max(totals) * 1.1 if totals else 100
+
+    if len(chart_dates) < len(dates):
+        chart_note = f"showing {len(chart_dates)} of {len(dates)} publish dates (last 18 months)"
+    else:
+        chart_note = f"{len(dates)} publish dates"
 
     changes_section = changes_html(prev_date, new_date, added, removed, changed)
     changes_title = f"Changes: {prev_date} → {new_date}" if prev_date else "Changes"
@@ -159,6 +189,7 @@ def generate_html(dates, counts, all_rows):
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NIST CMVP Modules In Process</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
 <style>
   *, *::before, *::after {{ box-sizing: border-box; }}
   body {{
@@ -187,7 +218,7 @@ def generate_html(dates, counts, all_rows):
 </head>
 <body>
 <h1>NIST CMVP Modules In Process</h1>
-<p class="subtitle">Source: <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CSRC</a> &mdash; {len(dates)} publish dates &mdash; most recent: {new_date}</p>
+<p class="subtitle">Source: <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CSRC</a> &mdash; {chart_note} &mdash; most recent: {new_date}</p>
 
 <h2>Status Over Time</h2>
 <div class="chart-container">
@@ -206,7 +237,6 @@ const ctx = document.getElementById('mipChart').getContext('2d');
 new Chart(ctx, {{
   type: 'bar',
   data: {{
-    labels: {chart_labels},
     datasets: {chart_datasets}
   }},
   options: {{
@@ -215,6 +245,7 @@ new Chart(ctx, {{
       tooltip: {{
         mode: 'index',
         callbacks: {{
+          title: (items) => items[0]?.label ?? '',
           footer: (items) => {{
             const total = items.reduce((s, i) => s + i.parsed.y, 0);
             return 'Total: ' + total;
@@ -223,10 +254,13 @@ new Chart(ctx, {{
       }}
     }},
     responsive: true,
+    barThickness: 6,
     scales: {{
       x: {{
+        type: 'time',
+        time: {{ unit: 'month', tooltipFormat: 'M/d/yyyy', displayFormats: {{ month: 'MMM yyyy' }} }},
         stacked: true,
-        ticks: {{ maxRotation: 60, minRotation: 45, font: {{ size: 11 }} }}
+        ticks: {{ maxRotation: 45, minRotation: 45, font: {{ size: 11 }} }}
       }},
       y: {{
         stacked: true,
@@ -245,15 +279,24 @@ new Chart(ctx, {{
 def main():
     parser = argparse.ArgumentParser(description="Generate HTML report from NIST MIP database.")
     parser.add_argument("-o", "--output", default=OUTPUT_FILE, help=f"Output HTML file (default: {OUTPUT_FILE})")
+    parser.add_argument("--all", dest="all_dates", action="store_true", help="Chart all dates in the database (default: last 18 months)")
     args = parser.parse_args()
 
     dates, counts, all_rows = load_data()
-    html = generate_html(dates, counts, all_rows)
+
+    if args.all_dates:
+        chart_dates = dates
+    else:
+        most_recent = datetime.strptime(dates[-1], "%m/%d/%Y")
+        cutoff = subtract_months(most_recent, 18)
+        chart_dates = [d for d in dates if datetime.strptime(d, "%m/%d/%Y") >= cutoff]
+
+    html = generate_html(dates, counts, all_rows, chart_dates=chart_dates)
 
     with open(args.output, "w") as f:
         f.write(html)
 
-    print(f"Report written to {args.output} ({len(dates)} publish dates)")
+    print(f"Report written to {args.output} ({len(chart_dates)} of {len(dates)} publish dates charted)")
 
 
 if __name__ == "__main__":
