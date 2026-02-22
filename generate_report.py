@@ -113,6 +113,26 @@ def build_chart_data(dates, counts):
     return datasets
 
 
+def finalization_html(all_rows, new_date):
+    """Return (html, count) for modules in Coordination or Finalization as of new_date."""
+    target = {"Coordination", "Finalization"}
+    rows = sorted(
+        [(r[1], r[2], r[3], r[4]) for r in all_rows
+         if r[0] == new_date and normalize_status(r[4]) in target],
+        key=lambda r: (normalize_status(r[3]), r[0]),
+    )
+    if not rows:
+        return "<p>No modules currently in Coordination or Finalization.</p>", 0
+    trs = "".join(
+        f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>"
+        for r in rows
+    )
+    return (
+        f"<table><thead><tr><th>Module</th><th>Vendor</th><th>Standard</th><th>Status</th></tr></thead>"
+        f"<tbody>{trs}</tbody></table>"
+    ), len(rows)
+
+
 def changes_html(prev_date, new_date, added, removed, changed):
     if prev_date is None:
         return "<p>Not enough data for change comparison.</p>"
@@ -177,6 +197,8 @@ def generate_html(dates, counts, all_rows, chart_dates=None):
     else:
         chart_note = f"{len(dates)} publish dates"
 
+    fin_html, fin_count = finalization_html(all_rows, new_date)
+
     changes_section = changes_html(prev_date, new_date, added, removed, changed)
     changes_title = f"Changes: {prev_date} → {new_date}" if prev_date else "Changes"
 
@@ -214,6 +236,13 @@ def generate_html(dates, counts, all_rows, chart_dates=None):
   tr:last-child td {{ border-bottom: none; }}
   tr:hover td {{ background: #f8f9fa; }}
   .footer {{ color: #adb5bd; font-size: 0.78rem; margin-top: 28px; }}
+  .search-bar {{ margin: 24px 0 -16px; }}
+  .search-bar input {{
+    width: 100%; max-width: 380px; padding: 8px 12px;
+    border: 1px solid #dee2e6; border-radius: 6px;
+    font-size: 0.9rem; color: #212529; outline: none;
+  }}
+  .search-bar input:focus {{ border-color: #4e79a7; box-shadow: 0 0 0 3px rgba(78,121,167,.15); }}
 </style>
 </head>
 <body>
@@ -225,9 +254,18 @@ def generate_html(dates, counts, all_rows, chart_dates=None):
   <canvas id="mipChart"></canvas>
 </div>
 
+<div class="search-bar">
+  <input type="text" id="searchBox" placeholder="Filter by module or vendor name…">
+</div>
+
 <h2>{changes_title}</h2>
 <div class="changes">
 {changes_section}
+</div>
+
+<h2 id="fin-heading">Coordination &amp; Finalization as of {new_date} <span class="badge">{fin_count}</span></h2>
+<div class="changes" id="fin-section">
+{fin_html}
 </div>
 
 <p class="footer">Generated {generated_at}</p>
@@ -269,6 +307,29 @@ new Chart(ctx, {{
       }}
     }}
   }}
+}});
+
+document.getElementById('searchBox').addEventListener('input', function() {{
+  const q = this.value.toLowerCase().trim();
+  document.querySelectorAll('table tbody tr').forEach(row => {{
+    row.style.display = (!q || row.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  }});
+  // Show/hide finalization section
+  const finSec = document.getElementById('fin-section');
+  const finH2  = document.getElementById('fin-heading');
+  if (finSec) {{
+    const vis = !q || [...finSec.querySelectorAll('tbody tr')].some(r => r.style.display !== 'none');
+    finSec.style.display = vis ? '' : 'none';
+    finH2.style.display  = vis ? '' : 'none';
+  }}
+  // Show/hide individual changes subsections
+  document.querySelectorAll('.changes h3').forEach(h3 => {{
+    const tbl = h3.nextElementSibling;
+    if (!tbl) return;
+    const vis = !q || [...tbl.querySelectorAll('tbody tr')].some(r => r.style.display !== 'none');
+    h3.style.display  = vis ? '' : 'none';
+    tbl.style.display = vis ? '' : 'none';
+  }});
 }});
 </script>
 </body>

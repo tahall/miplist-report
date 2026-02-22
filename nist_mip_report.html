@@ -30,15 +30,26 @@
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: #f8f9fa; }
   .footer { color: #adb5bd; font-size: 0.78rem; margin-top: 28px; }
+  .search-bar { margin: 24px 0 -16px; }
+  .search-bar input {
+    width: 100%; max-width: 380px; padding: 8px 12px;
+    border: 1px solid #dee2e6; border-radius: 6px;
+    font-size: 0.9rem; color: #212529; outline: none;
+  }
+  .search-bar input:focus { border-color: #4e79a7; box-shadow: 0 0 0 3px rgba(78,121,167,.15); }
 </style>
 </head>
 <body>
 <h1>NIST CMVP Modules In Process</h1>
-<p class="subtitle">Source: <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CSRC</a> &mdash; showing 83 of 113 publish dates (last 18 months) &mdash; most recent: 2/20/2026</p>
+<p class="subtitle">Source: <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CSRC</a> &mdash; showing 83 of 147 publish dates (last 18 months) &mdash; most recent: 2/20/2026</p>
 
 <h2>Status Over Time</h2>
 <div class="chart-container">
   <canvas id="mipChart"></canvas>
+</div>
+
+<div class="search-bar">
+  <input type="text" id="searchBox" placeholder="Filter by module or vendor name…">
 </div>
 
 <h2>Changes: 2/19/2026 → 2/20/2026</h2>
@@ -56,7 +67,12 @@
         </table>
 </div>
 
-<p class="footer">Generated 2026-02-20 11:27:09</p>
+<h2 id="fin-heading">Coordination &amp; Finalization as of 2/20/2026 <span class="badge">65</span></h2>
+<div class="changes" id="fin-section">
+<table><thead><tr><th>Module</th><th>Vendor</th><th>Standard</th><th>Status</th></tr></thead><tbody><tr><td>Apple corecrypto Module 18.3 [Apple silicon, User, Software, SL1]</td><td>Apple Inc.</td><td>FIPS 140-3</td><td>Coordination  (2/19/2026)</td></tr><tr><td>Apple corecrypto Module v14.0 [Apple silicon, Kernel, Software, SL1]</td><td>Apple Inc.</td><td>FIPS 140-3</td><td>Coordination  (11/19/2025)</td></tr><tr><td>Apple corecrypto Module v14.0 [Apple silicon, User, Software, SL1]</td><td>Apple Inc.</td><td>FIPS 140-3</td><td>Coordination  (11/19/2025)</td></tr><tr><td>Apple corecrypto Module v14.0 [Intel, Kernel, Software, SL1]</td><td>Apple Inc.</td><td>FIPS 140-3</td><td>Coordination  (12/17/2025)</td></tr><tr><td>Apple corecrypto Module v14.0 [Intel, User, Software, SL1]</td><td>Apple Inc.</td><td>FIPS 140-3</td><td>Coordination  (12/17/2025)</td></tr><tr><td>Aviat Networks WTM 4100/4200/4500/4500XT Payload Encryption Module</td><td>Aviat Networks, Inc.</td><td>FIPS 140-3</td><td>Coordination  (10/23/2025)</td></tr><tr><td>Barco ICMP-XS Cryptographic Module</td><td>Barco n.v.</td><td>FIPS 140-3</td><td>Coordination  (11/25/2025)</td></tr><tr><td>BitLocker Dump Filter</td><td>Microsoft Corporation</td><td>FIPS 140-3</td><td>Coordination  (2/11/2026)</td></tr><tr><td>Boot Manager</td><td>Microsoft Corporation</td><td>FIPS 140-3</td><td>Coordination  (1/28/2026)</td></tr><tr><td>Canonical Ltd. Ubuntu 24.04 GnuTLS Cryptographic Module</td><td>Canonical Ltd.</td><td>FIPS 140-3</td><td>Coordination  (1/20/2026)</td></tr><tr><td>Canonical Ltd. Ubuntu 24.04 Kernel Crypto API Cryptographic Module</td><td>Canonical Ltd.</td><td>FIPS 140-3</td><td>Coordination  (1/14/2026)</td></tr><tr><td>Cisco 8800 Series Routers with MACsec</td><td>Cisco Systems, Inc.</td><td>FIPS 140-3</td><td>Coordination  (1/29/2026)</td></tr><tr><td>Cisco 8800 Series Routers without MACsec</td><td>Cisco Systems, Inc.</td><td>FIPS 140-3</td><td>Coordination  (1/29/2026)</td></tr><tr><td>Cisco ASA FX-OS on 4K/9K Cryptographic Module</td><td>Cisco Systems, Inc.</td><td>FIPS 140-3</td><td>Coordination  (10/29/2025)</td></tr><tr><td>Cisco Adaptive Security Appliance on 4K/9K Cryptographic Module</td><td>Cisco Systems, Inc.</td><td>FIPS 140-3</td><td>Coordination  (10/29/2025)</td></tr><tr><td>Cisco FTD FX-OS on 4K/9K Cryptographic Module</td><td>Cisco Systems, Inc.</td><td>FIPS 140-3</td><td>Coordination  (10/29/2025)</td></tr><tr><td>Cisco Firepower Threat Defense on 4K/9K Cryptographic Module</td><td>Cisco Systems, Inc.</td><td>FIPS 140-3</td><td>Coordination  (10/29/2025)</td></tr><tr><td>Code Integrity</td><td>Microsoft Corporation</td><td>FIPS 140-3</td><td>Coordination  (2/17/2026)</td></tr><tr><td>DigiCert TrustCore Cryptographic Suite B Module</td><td>DigiCert, Inc.</td><td>FIPS 140-3</td><td>Coordination  (11/24/2025)</td></tr><tr><td>FortiAP 7.4</td><td>Fortinet, Inc.</td><td>FIPS 140-3</td><td>Coordination  (11/7/2025)</td></tr><tr><td>FortiAP Access Points with FortiAP 7.4</td><td>Fortinet, Inc.</td><td>FIPS 140-3</td><td>Coordination  (11/26/2025)</td></tr><tr><td>Infinidat Cryptographic Module</td><td>Infinidat, Ltd.</td><td>FIPS 140-3</td><td>Coordination  (11/10/2025)</td></tr><tr><td>Juniper Networks EX2300, EX2300-C and EX3400 Ethernet Switches</td><td>Juniper Networks, Inc.</td><td>FIPS 140-3</td><td>Coordination  (12/5/2025)</td></tr><tr><td>Juniper Networks MX2010 and MX2020 3D Universal Edge Routers</td><td>Juniper Networks, Inc.</td><td>FIPS 140-3</td><td>Coordination  (12/5/2025)</td></tr><tr><td>Juniper Networks MX240, MX480 and MX960 series and EX9204, EX9208, EX9214 Ethernet Switches, Release 23.4R1.9</td><td>Juniper Networks, Inc.</td><td>FIPS 140-3</td><td>Coordination  (12/5/2025)</td></tr><tr><td>KIOXIA FIPS TC58NC1137GTC/TC58NC1138GTC Crypto Sub-Chip Class B1</td><td>KIOXIA Corporation</td><td>FIPS 140-3</td><td>Coordination  (1/13/2026)</td></tr><tr><td>Luna M7 Cryptographic Module</td><td>Thales Trusted Cyber Technologies</td><td>FIPS 140-3</td><td>Coordination  (2/6/2026)</td></tr><tr><td>Nokia SR Cryptographic Module (SRCM)</td><td>Nokia Corporation</td><td>FIPS 140-3</td><td>Coordination  (9/9/2025)</td></tr><tr><td>Nuvoton NPCT7xx TPM 2.0 Cryptographic Engine</td><td>Nuvoton Technology Corporation</td><td>FIPS 140-3</td><td>Coordination  (1/26/2026)</td></tr><tr><td>Palo Alto Networks SD-WAN ION Core Crypto Module</td><td>Palo Alto Networks, Inc.</td><td>FIPS 140-3</td><td>Coordination  (12/1/2025)</td></tr><tr><td>Palo Alto Networks SD-WAN Instant-On Network (ION) Devices ION 1200, ION 1200-S, ION 3200, ION 3200H, ION 5200, and ION 9200</td><td>Palo Alto Networks, Inc.</td><td>FIPS 140-3</td><td>Coordination  (12/1/2025)</td></tr><tr><td>Palo Alto Networks SD-WAN Virtual Instant-On Network (vION)</td><td>Palo Alto Networks, Inc.</td><td>FIPS 140-3</td><td>Coordination  (12/1/2025)</td></tr><tr><td>Postal xRevenector US 2023</td><td>FP InovoLabs GmbH</td><td>FIPS 140-3</td><td>Coordination  (10/15/2025)</td></tr><tr><td>QASM Cryptographic Module</td><td>Crypto4A Technologies Inc.</td><td>FIPS 140-3</td><td>Coordination  (12/22/2025)</td></tr><tr><td>Qualcomm® Pseudo Random Number Generator</td><td>Qualcomm Technologies, Inc.</td><td>FIPS 140-3</td><td>Coordination  (2/13/2026)</td></tr><tr><td>RA6M4 Security Management Module</td><td>Renesas Electronics Corporation</td><td>FIPS 140-3</td><td>Coordination  (11/7/2025)</td></tr><tr><td>Red Hat Enterprise Linux 8 NSS Cryptographic Module</td><td>Red Hat, Inc.</td><td>FIPS 140-3</td><td>Coordination  (12/10/2025)</td></tr><tr><td>River Redux Cryptographic Module</td><td>Google, LLC.</td><td>FIPS 140-3</td><td>Coordination  (11/5/2025)</td></tr><tr><td>Rocky Linux 8 and 9 GnuTLS Cryptographic Module</td><td>Ctrl IQ, Inc.</td><td>FIPS 140-3</td><td>Coordination  (1/20/2026)</td></tr><tr><td>Rocky Linux 8 and 9 NSS Cryptographic Module</td><td>Ctrl IQ, Inc.</td><td>FIPS 140-3</td><td>Coordination  (11/3/2025)</td></tr><tr><td>SUSE Linux Enterprise GnuTLS Cryptographic Module</td><td>SUSE LLC</td><td>FIPS 140-3</td><td>Coordination  (1/20/2026)</td></tr><tr><td>SUSE Linux Enterprise NSS Cryptographic Module</td><td>SUSE LLC</td><td>FIPS 140-3</td><td>Coordination  (12/10/2025)</td></tr><tr><td>Secure Kernel Code Integrity</td><td>Microsoft Corporation</td><td>FIPS 140-3</td><td>Coordination  (2/17/2026)</td></tr><tr><td>SonicWALL NSa 6700</td><td>SonicWall, Inc.</td><td>FIPS 140-3</td><td>Coordination  (9/17/2025)</td></tr><tr><td>TW-860-F TSM Spirit</td><td>TrellisWare Technologies, Inc.</td><td>FIPS 140-3</td><td>Coordination  (11/10/2025)</td></tr><tr><td>TW-900-F/950-F TSM Shadow, TW-880-F TSM Ghost Embedded, TW-870-F/875-F TSM Ghost, TW-135-F TSM Shadow High-Power</td><td>TrellisWare Technologies, Inc.</td><td>FIPS 140-3</td><td>Coordination  (11/10/2025)</td></tr><tr><td>Thales Alenia Space Cryptographic Module for Microsemi RTG4 FPGA</td><td>Thales Alenia Space</td><td>FIPS 140-3</td><td>Coordination  (2/13/2026)</td></tr><tr><td>Titan-BPN Cryptographic Module</td><td>Google, LLC.</td><td>FIPS 140-3</td><td>Coordination  (11/5/2025)</td></tr><tr><td>Trellix Intrusion Prevention System Sensor NS3100, NS3200, NS5100 and NS5200</td><td>Trellix</td><td>FIPS 140-3</td><td>Coordination  (10/16/2025)</td></tr><tr><td>Trellix Intrusion Prevention System Sensor NS3600</td><td>Trellix</td><td>FIPS 140-3</td><td>Coordination  (10/16/2025)</td></tr><tr><td>Trellix Intrusion Prevention System Sensor NS7150, NS7250 and NS7350</td><td>Trellix</td><td>FIPS 140-3</td><td>Coordination  (10/16/2025)</td></tr><tr><td>Trellix Intrusion Prevention System Sensor NS7500</td><td>Trellix</td><td>FIPS 140-3</td><td>Coordination  (10/16/2025)</td></tr><tr><td>Trellix Intrusion Prevention System Sensor NS7600</td><td>Trellix</td><td>FIPS 140-3</td><td>Coordination  (10/16/2025)</td></tr><tr><td>Trellix Intrusion Prevention System Sensor NS9500</td><td>Trellix</td><td>FIPS 140-3</td><td>Coordination  (10/16/2025)</td></tr><tr><td>Trellix Intrusion Prevention System Sensor NS9600</td><td>Trellix</td><td>FIPS 140-3</td><td>Coordination  (10/16/2025)</td></tr><tr><td>Trend Micro Crypto Core OpenSSL</td><td>Trend Micro Incorporated</td><td>FIPS 140-2</td><td>Coordination  (9/18/2024)</td></tr><tr><td>Vega-1 Cryptographic Module</td><td>ST Engineering Urban Solutions Ltd.</td><td>FIPS 140-3</td><td>Coordination  (1/6/2026)</td></tr><tr><td>WatchGuard Firebox M4800 and M5800</td><td>WatchGuard Technologies, Inc.</td><td>FIPS 140-3</td><td>Coordination  (7/16/2025)</td></tr><tr><td>WatchGuard Firebox T20, T20-W, T40, T40-W, T80, NV5, T25, T25-W, T45, T45-PoE, T45-W-PoE, T45-CW, T85-PoE, M290, M390, M590 and M690</td><td>WatchGuard Technologies, Inc.</td><td>FIPS 140-3</td><td>Coordination  (8/25/2025)</td></tr><tr><td>Windows OS Loader</td><td>Microsoft Corporation</td><td>FIPS 140-3</td><td>Coordination  (2/11/2026)</td></tr><tr><td>YubiKey 5 Cryptographic Module</td><td>Yubico, Inc.</td><td>FIPS 140-3</td><td>Coordination  (12/17/2025)</td></tr><tr><td>Zebra 9098 Cryptographic Module</td><td>Zebra Technologies Corporation</td><td>FIPS 140-3</td><td>Coordination  (11/6/2025)</td></tr><tr><td>u.trust Anchor</td><td>Utimaco IS GmbH</td><td>FIPS 140-3</td><td>Coordination  (2/3/2026)</td></tr><tr><td>xFusion Cryptographic Library</td><td>xFusion Digital Technologies Co., Ltd.</td><td>FIPS 140-3</td><td>Coordination  (2/3/2026)</td></tr><tr><td>Arista Crypto Module Lvl2 [Software, Software IPsec]</td><td>Arista Networks, Inc.</td><td>FIPS 140-3</td><td>Finalization  (1/29/2026)</td></tr></tbody></table>
+</div>
+
+<p class="footer">Generated 2026-02-21 19:44:18</p>
 
 <script>
 const ctx = document.getElementById('mipChart').getContext('2d');
@@ -95,6 +111,29 @@ new Chart(ctx, {
       }
     }
   }
+});
+
+document.getElementById('searchBox').addEventListener('input', function() {
+  const q = this.value.toLowerCase().trim();
+  document.querySelectorAll('table tbody tr').forEach(row => {
+    row.style.display = (!q || row.textContent.toLowerCase().includes(q)) ? '' : 'none';
+  });
+  // Show/hide finalization section
+  const finSec = document.getElementById('fin-section');
+  const finH2  = document.getElementById('fin-heading');
+  if (finSec) {
+    const vis = !q || [...finSec.querySelectorAll('tbody tr')].some(r => r.style.display !== 'none');
+    finSec.style.display = vis ? '' : 'none';
+    finH2.style.display  = vis ? '' : 'none';
+  }
+  // Show/hide individual changes subsections
+  document.querySelectorAll('.changes h3').forEach(h3 => {
+    const tbl = h3.nextElementSibling;
+    if (!tbl) return;
+    const vis = !q || [...tbl.querySelectorAll('tbody tr')].some(r => r.style.display !== 'none');
+    h3.style.display  = vis ? '' : 'none';
+    tbl.style.display = vis ? '' : 'none';
+  });
 });
 </script>
 </body>
