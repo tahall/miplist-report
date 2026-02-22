@@ -149,8 +149,8 @@ def compute_module_stats(all_rows, dates):
 
 
 def finalization_html(all_rows, new_date, first_seen=None, status_since=None):
-    """Return (html, count) for modules in Coordination or Finalization as of new_date."""
-    target = {"Coordination", "Finalization"}
+    """Return (html, count) for modules in Finalization as of new_date."""
+    target = {"Finalization"}
     new_dt = datetime.strptime(new_date, "%m/%d/%Y")
     rows = sorted(
         [(r[1], r[2], r[3], r[4]) for r in all_rows
@@ -158,7 +158,7 @@ def finalization_html(all_rows, new_date, first_seen=None, status_since=None):
         key=lambda r: (normalize_status(r[3]), r[0]),
     )
     if not rows:
-        return "<p>No modules currently in Coordination or Finalization.</p>", 0
+        return "<p>No modules currently in Finalization.</p>", 0
 
     def days_ago(dt):
         return (new_dt - dt).days
@@ -291,8 +291,6 @@ def generate_html(dates, counts, all_rows, chart_dates=None):
     first_seen, status_since = compute_module_stats(all_rows, dates)
     fin_html, fin_count = finalization_html(all_rows, new_date, first_seen=first_seen, status_since=status_since)
 
-    disap_table, disap_count = disappearances_html(all_rows, dates)
-
     changes_section = changes_html(prev_date, new_date, added, removed, changed)
     changes_title = f"Changes: {prev_date} → {new_date}" if prev_date else "Changes"
 
@@ -330,13 +328,6 @@ def generate_html(dates, counts, all_rows, chart_dates=None):
   tr:last-child td {{ border-bottom: none; }}
   tr:hover td {{ background: #f8f9fa; }}
   .footer {{ color: #adb5bd; font-size: 0.78rem; margin-top: 28px; }}
-  .search-bar {{ margin: 24px 0 -16px; }}
-  .search-bar input {{
-    width: 100%; max-width: 380px; padding: 8px 12px;
-    border: 1px solid #dee2e6; border-radius: 6px;
-    font-size: 0.9rem; color: #212529; outline: none;
-  }}
-  .search-bar input:focus {{ border-color: #4e79a7; box-shadow: 0 0 0 3px rgba(78,121,167,.15); }}
 </style>
 </head>
 <body>
@@ -348,23 +339,14 @@ def generate_html(dates, counts, all_rows, chart_dates=None):
   <canvas id="mipChart"></canvas>
 </div>
 
-<div class="search-bar">
-  <input type="text" id="searchBox" placeholder="Filter by module or vendor name…">
-</div>
-
 <h2>{changes_title}</h2>
 <div class="changes">
 {changes_section}
 </div>
 
-<h2 id="fin-heading">Coordination &amp; Finalization as of {new_date} <span class="badge">{fin_count}</span></h2>
+<h2 id="fin-heading">Finalization as of {new_date} <span class="badge">{fin_count}</span></h2>
 <div class="changes" id="fin-section">
 {fin_html}
-</div>
-
-<h2 id="disap-heading">Disappeared Without Graduating <span class="badge">{disap_count}</span></h2>
-<div class="changes" id="disap-section">
-{disap_table}
 </div>
 
 <p class="footer">Generated {generated_at}</p>
@@ -408,36 +390,6 @@ new Chart(ctx, {{
   }}
 }});
 
-document.getElementById('searchBox').addEventListener('input', function() {{
-  const q = this.value.toLowerCase().trim();
-  document.querySelectorAll('table tbody tr').forEach(row => {{
-    row.style.display = (!q || row.textContent.toLowerCase().includes(q)) ? '' : 'none';
-  }});
-  // Show/hide finalization section
-  const finSec = document.getElementById('fin-section');
-  const finH2  = document.getElementById('fin-heading');
-  if (finSec) {{
-    const vis = !q || [...finSec.querySelectorAll('tbody tr')].some(r => r.style.display !== 'none');
-    finSec.style.display = vis ? '' : 'none';
-    finH2.style.display  = vis ? '' : 'none';
-  }}
-  // Show/hide disappearances section
-  const disSec = document.getElementById('disap-section');
-  const disH2  = document.getElementById('disap-heading');
-  if (disSec) {{
-    const vis = !q || [...disSec.querySelectorAll('tbody tr')].some(r => r.style.display !== 'none');
-    disSec.style.display = vis ? '' : 'none';
-    disH2.style.display  = vis ? '' : 'none';
-  }}
-  // Show/hide individual changes subsections
-  document.querySelectorAll('.changes h3').forEach(h3 => {{
-    const tbl = h3.nextElementSibling;
-    if (!tbl) return;
-    const vis = !q || [...tbl.querySelectorAll('tbody tr')].some(r => r.style.display !== 'none');
-    h3.style.display  = vis ? '' : 'none';
-    tbl.style.display = vis ? '' : 'none';
-  }});
-}});
 </script>
 </body>
 </html>
