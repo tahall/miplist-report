@@ -101,19 +101,25 @@ def save_to_db(publish_date, rows, not_displayed=0, verbose=False):
     cur.execute("""
         CREATE TABLE IF NOT EXISTS not_displayed (
             publish_date TEXT PRIMARY KEY,
-            count INTEGER NOT NULL DEFAULT 0
+            count INTEGER NOT NULL DEFAULT 0,
+            total_count INTEGER NOT NULL DEFAULT 0
         )
     """)
+    try:
+        cur.execute("ALTER TABLE not_displayed ADD COLUMN total_count INTEGER NOT NULL DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass  # column already exists
     cur.execute("DELETE FROM modules WHERE publish_date = ?", (publish_date,))
-    for row in rows:
-        if len(row) >= 4:
-            cur.execute(
-                "INSERT INTO modules (publish_date, module_name, vendor_name, standard, status) VALUES (?, ?, ?, ?, ?)",
-                (publish_date, row[0], row[1], row[2], row[3]),
-            )
+    valid_rows = [row for row in rows if len(row) >= 4]
+    for row in valid_rows:
+        cur.execute(
+            "INSERT INTO modules (publish_date, module_name, vendor_name, standard, status) VALUES (?, ?, ?, ?, ?)",
+            (publish_date, row[0], row[1], row[2], row[3]),
+        )
+    total_count = len(valid_rows) + not_displayed
     cur.execute(
-        "INSERT OR REPLACE INTO not_displayed (publish_date, count) VALUES (?, ?)",
-        (publish_date, not_displayed),
+        "INSERT OR REPLACE INTO not_displayed (publish_date, count, total_count) VALUES (?, ?, ?)",
+        (publish_date, not_displayed, total_count),
     )
     conn.commit()
     conn.close()
@@ -370,10 +376,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Scrape the NIST CMVP Modules In Process list.")
     parser.add_argument("-from", dest="from_date", help="Fetch historical data from Wayback Machine starting at M/YYYY or M/D/YYYY")
     parser.add_argument("-to", dest="to_date", help="End date for Wayback Machine scraping at M/YYYY or M/D/YYYY (default: today)")
+    parser.add_argument("--backfill", action="store_true", help="Fill gaps in DB via Wayback Machine, starting from the earliest date already in the DB")
     parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed progress information")
     parser.add_argument("--csv", nargs="?", const="nist_modules_in_process.csv", metavar="FILENAME",
                         help="Export all DB data to CSV (default: nist_modules_in_process.csv)")
-    parser.add_argument("--schedule", action="store_true", help="Install a daily 8 AM cron job")
+    parser.add_argument("--schedule", action="store_true", help="Install a daily 4 AM Eastern cron job")
     parser.add_argument("--unschedule", action="store_true", help="Remove the cron job installed by --schedule")
     args = parser.parse_args()
 
@@ -389,10 +396,21 @@ if __name__ == "__main__":
         remove_cron()
         sys.exit(0)
 
-    if args.to_date and not args.from_date:
+    if args.backfill and args.from_date:
+        parser.error("--backfill and -from are mutually exclusive")
+
+    if args.to_date and not args.from_date and not args.backfill:
         parser.error("-to requires -from")
 
-    if args.from_date:
+    if args.backfill:
+        existing = get_existing_publish_dates(verbose=args.verbose)
+        from_date = (
+            min(existing, key=lambda d: datetime.strptime(d, "%m/%d/%Y"))
+            if existing else "1/1/2023"
+        )
+        print(f"Backfilling from {from_date}...")
+        scrape_from_wayback(from_date, verbose=args.verbose)
+    elif args.from_date:
         scrape_from_wayback(args.from_date, to_date_str=args.to_date, verbose=args.verbose)
     else:
         scrape_modules_in_process(verbose=args.verbose)
