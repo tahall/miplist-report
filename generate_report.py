@@ -113,9 +113,45 @@ def build_chart_data(dates, counts):
     return datasets
 
 
-def finalization_html(all_rows, new_date):
+def compute_module_stats(all_rows, dates):
+    """Return (first_seen, status_since) dicts keyed by (module_name, vendor_name, standard).
+
+    first_seen: earliest publish_date the module appeared (as datetime)
+    status_since: earliest publish_date of the current unbroken normalized-status run (as datetime)
+    """
+    date_dt = {d: datetime.strptime(d, "%m/%d/%Y") for d in dates}
+    sorted_dates = sorted(dates, key=lambda d: date_dt[d])
+
+    # Build {key: [(date, norm_status), ...]} sorted chronologically
+    history = {}
+    for pub_date, module_name, vendor_name, standard, status in all_rows:
+        key = (module_name, vendor_name, standard)
+        history.setdefault(key, []).append((pub_date, normalize_status(status)))
+
+    for key in history:
+        history[key].sort(key=lambda x: date_dt.get(x[0], datetime.min))
+
+    first_seen = {}
+    status_since = {}
+    for key, entries in history.items():
+        first_seen[key] = date_dt[entries[0][0]]
+        # Walk backwards to find start of current status run
+        current_status = entries[-1][1]
+        run_start = entries[-1][0]
+        for pub_date, norm_status in reversed(entries[:-1]):
+            if norm_status == current_status:
+                run_start = pub_date
+            else:
+                break
+        status_since[key] = date_dt[run_start]
+
+    return first_seen, status_since
+
+
+def finalization_html(all_rows, new_date, first_seen=None, status_since=None):
     """Return (html, count) for modules in Coordination or Finalization as of new_date."""
     target = {"Coordination", "Finalization"}
+    new_dt = datetime.strptime(new_date, "%m/%d/%Y")
     rows = sorted(
         [(r[1], r[2], r[3], r[4]) for r in all_rows
          if r[0] == new_date and normalize_status(r[4]) in target],
@@ -123,14 +159,69 @@ def finalization_html(all_rows, new_date):
     )
     if not rows:
         return "<p>No modules currently in Coordination or Finalization.</p>", 0
-    trs = "".join(
-        f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>"
-        for r in rows
-    )
+
+    def days_ago(dt):
+        return (new_dt - dt).days
+
+    def fmt_date(dt):
+        return dt.strftime("%-m/%-d/%Y")
+
+    if first_seen and status_since:
+        trs = "".join(
+            f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>"
+            f"<td>{fmt_date(first_seen.get((r[0], r[1], r[2]), new_dt))}</td>"
+            f"<td>{days_ago(status_since.get((r[0], r[1], r[2]), new_dt))}</td></tr>"
+            for r in rows
+        )
+        header = "<th>Module</th><th>Vendor</th><th>Standard</th><th>Status</th><th>First Seen</th><th>Days in Status</th>"
+    else:
+        trs = "".join(
+            f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>"
+            for r in rows
+        )
+        header = "<th>Module</th><th>Vendor</th><th>Standard</th><th>Status</th>"
+
     return (
-        f"<table><thead><tr><th>Module</th><th>Vendor</th><th>Standard</th><th>Status</th></tr></thead>"
+        f"<table><thead><tr>{header}</tr></thead>"
         f"<tbody>{trs}</tbody></table>"
     ), len(rows)
+
+
+def disappearances_html(all_rows, dates):
+    """Return (html, count) for modules that dropped from a non-terminal status (most recent disappearance first)."""
+    terminal = {"Finalization"}
+    date_dt = {d: datetime.strptime(d, "%m/%d/%Y") for d in dates}
+    sorted_dates = sorted(dates, key=lambda d: date_dt[d])
+
+    last_status = {}  # key -> (last_publish_date, normalized_status)
+    for pub_date, module_name, vendor_name, standard, status in all_rows:
+        key = (module_name, vendor_name, standard)
+        if key not in last_status or date_dt[pub_date] > date_dt[last_status[key][0]]:
+            last_status[key] = (pub_date, normalize_status(status))
+
+    most_recent = sorted_dates[-1]
+    disappeared = [
+        (key, last_date, last_norm)
+        for key, (last_date, last_norm) in last_status.items()
+        if last_date != most_recent and last_norm not in terminal
+    ]
+
+    if not disappeared:
+        return "<p>No modules have disappeared without reaching Finalization.</p>", 0
+
+    disappeared.sort(key=lambda x: date_dt[x[1]], reverse=True)
+
+    trs = "".join(
+        f"<tr><td>{k[0]}</td><td>{k[1]}</td><td>{k[2]}</td>"
+        f"<td>{last_norm}</td><td>{last_date}</td></tr>"
+        for k, last_date, last_norm in disappeared
+    )
+    html = (
+        f"<table><thead><tr>"
+        f"<th>Module</th><th>Vendor</th><th>Standard</th><th>Last Status</th><th>Last Seen</th>"
+        f"</tr></thead><tbody>{trs}</tbody></table>"
+    )
+    return html, len(disappeared)
 
 
 def changes_html(prev_date, new_date, added, removed, changed):
@@ -197,7 +288,10 @@ def generate_html(dates, counts, all_rows, chart_dates=None):
     else:
         chart_note = f"{len(dates)} publish dates"
 
-    fin_html, fin_count = finalization_html(all_rows, new_date)
+    first_seen, status_since = compute_module_stats(all_rows, dates)
+    fin_html, fin_count = finalization_html(all_rows, new_date, first_seen=first_seen, status_since=status_since)
+
+    disap_table, disap_count = disappearances_html(all_rows, dates)
 
     changes_section = changes_html(prev_date, new_date, added, removed, changed)
     changes_title = f"Changes: {prev_date} → {new_date}" if prev_date else "Changes"
@@ -268,6 +362,11 @@ def generate_html(dates, counts, all_rows, chart_dates=None):
 {fin_html}
 </div>
 
+<h2 id="disap-heading">Disappeared Without Graduating <span class="badge">{disap_count}</span></h2>
+<div class="changes" id="disap-section">
+{disap_table}
+</div>
+
 <p class="footer">Generated {generated_at}</p>
 
 <script>
@@ -321,6 +420,14 @@ document.getElementById('searchBox').addEventListener('input', function() {{
     const vis = !q || [...finSec.querySelectorAll('tbody tr')].some(r => r.style.display !== 'none');
     finSec.style.display = vis ? '' : 'none';
     finH2.style.display  = vis ? '' : 'none';
+  }}
+  // Show/hide disappearances section
+  const disSec = document.getElementById('disap-section');
+  const disH2  = document.getElementById('disap-heading');
+  if (disSec) {{
+    const vis = !q || [...disSec.querySelectorAll('tbody tr')].some(r => r.style.display !== 'none');
+    disSec.style.display = vis ? '' : 'none';
+    disH2.style.display  = vis ? '' : 'none';
   }}
   // Show/hide individual changes subsections
   document.querySelectorAll('.changes h3').forEach(h3 => {{

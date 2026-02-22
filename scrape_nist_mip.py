@@ -286,6 +286,27 @@ def export_csv(output_file):
     print(f"Exported {len(rows)} rows to {output_file}")
 
 
+def export_csv_history(output_file):
+    """Export per-module history to CSV: one row per module per publish date, sorted by module then date."""
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT module_name, vendor_name, standard, publish_date, status "
+        "FROM modules"
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    rows.sort(key=lambda r: (r[0], r[1], r[2], datetime.strptime(r[3], "%m/%d/%Y")))
+
+    with open(output_file, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["module_name", "vendor_name", "standard", "publish_date", "status"])
+        writer.writerows(rows)
+
+    print(f"Exported {len(rows)} rows to {output_file}")
+
+
 def print_changes(publish_date):
     """Print what changed between publish_date and the immediately preceding publish date."""
     conn = sqlite3.connect(DB_FILE)
@@ -327,8 +348,11 @@ def print_changes(publish_date):
         return
     for k in sorted(added):
         print(f"  ADDED:   {k[0]} / {k[1]} / {k[2]} — {new[k]}")
+    terminal_statuses = {"Finalization"}
     for k in sorted(removed):
-        print(f"  REMOVED: {k[0]} / {k[1]} / {k[2]} — {old[k]}")
+        last_status = old[k].split("(")[0].strip()
+        prefix = "  REMOVED:" if last_status in terminal_statuses else "  [ALERT] REMOVED:"
+        print(f"{prefix} {k[0]} / {k[1]} / {k[2]} — {old[k]}")
     for k in sorted(changed):
         print(f"  STATUS:  {k[0]} / {k[1]} / {k[2]}: {old[k]} → {new[k]}")
 
@@ -380,12 +404,18 @@ if __name__ == "__main__":
     parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed progress information")
     parser.add_argument("--csv", nargs="?", const="nist_modules_in_process.csv", metavar="FILENAME",
                         help="Export all DB data to CSV (default: nist_modules_in_process.csv)")
+    parser.add_argument("--csv-history", dest="csv_history", nargs="?", const="nist_module_history.csv", metavar="FILENAME",
+                        help="Export per-module history CSV (default: nist_module_history.csv)")
     parser.add_argument("--schedule", action="store_true", help="Install a daily 4 AM Eastern cron job")
     parser.add_argument("--unschedule", action="store_true", help="Remove the cron job installed by --schedule")
     args = parser.parse_args()
 
     if args.csv:
         export_csv(args.csv)
+        sys.exit(0)
+
+    if args.csv_history:
+        export_csv_history(args.csv_history)
         sys.exit(0)
 
     if args.schedule:
