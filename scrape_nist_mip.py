@@ -82,8 +82,13 @@ def print_summary(publish_date, not_displayed, rows):
         print(f"  {status:<30} {count}")
 
 
-def save_to_db(publish_date, rows, not_displayed=0, verbose=False):
+def save_to_db(publish_date, rows, not_displayed=0, verbose=False, dry_run=False):
     """Save scraped data to SQLite, replacing any existing data for the same publish date."""
+    valid_rows = [row for row in rows if len(row) >= 4]
+    if dry_run:
+        print(f"[DRY RUN] Would save {len(valid_rows)} module rows for {publish_date}"
+              + (f" + not_displayed={not_displayed}" if not_displayed else ""))
+        return
     if verbose:
         print(f"  Saving {len(rows)} rows for publish date {publish_date} to {DB_FILE}...")
     conn = sqlite3.connect(DB_FILE)
@@ -110,7 +115,6 @@ def save_to_db(publish_date, rows, not_displayed=0, verbose=False):
     except sqlite3.OperationalError:
         pass  # column already exists
     cur.execute("DELETE FROM modules WHERE publish_date = ?", (publish_date,))
-    valid_rows = [row for row in rows if len(row) >= 4]
     for row in valid_rows:
         cur.execute(
             "INSERT INTO modules (publish_date, module_name, vendor_name, standard, status) VALUES (?, ?, ?, ?, ?)",
@@ -195,7 +199,7 @@ def fetch_wayback_snapshots(from_date, to_date=None, verbose=False):
     return snapshots
 
 
-def scrape_from_wayback(from_date_str, to_date_str=None, verbose=False):
+def scrape_from_wayback(from_date_str, to_date_str=None, verbose=False, dry_run=False):
     """Fetch and process archived versions of the NIST MIP page."""
     from_date = parse_date_arg(from_date_str, label="from-date", verbose=verbose)
     to_date = parse_date_arg(to_date_str, label="to-date", verbose=verbose) if to_date_str else None
@@ -238,14 +242,15 @@ def scrape_from_wayback(from_date_str, to_date_str=None, verbose=False):
 
         print(f"\n  [{i+1}/{len(snapshots)}] Snapshot {timestamp}: NEW publish date {publish_date}")
         print_summary(publish_date, not_displayed, rows)
-        save_to_db(publish_date, rows, not_displayed=not_displayed, verbose=verbose)
-        print(f"  Saved to {DB_FILE}")
-        print_changes(publish_date)
+        save_to_db(publish_date, rows, not_displayed=not_displayed, verbose=verbose, dry_run=dry_run)
+        if not dry_run:
+            print(f"  Saved to {DB_FILE}")
+            print_changes(publish_date)
 
     print(f"\nDone. {new_count} new publish date(s) added.")
 
 
-def scrape_modules_in_process(verbose=False):
+def scrape_modules_in_process(verbose=False, dry_run=False):
     """Scrape the live NIST page."""
     if verbose:
         print(f"Fetching live page: {NIST_URL}")
@@ -261,9 +266,10 @@ def scrape_modules_in_process(verbose=False):
         sys.exit(1)
 
     print_summary(publish_date, not_displayed, rows)
-    save_to_db(publish_date, rows, not_displayed=not_displayed, verbose=verbose)
-    print(f"\nSaved to {DB_FILE}")
-    print_changes(publish_date)
+    save_to_db(publish_date, rows, not_displayed=not_displayed, verbose=verbose, dry_run=dry_run)
+    if not dry_run:
+        print(f"\nSaved to {DB_FILE}")
+        print_changes(publish_date)
     return rows
 
 
@@ -402,6 +408,7 @@ if __name__ == "__main__":
     parser.add_argument("-to", dest="to_date", help="End date for Wayback Machine scraping at M/YYYY or M/D/YYYY (default: today)")
     parser.add_argument("--backfill", action="store_true", help="Fill gaps in DB via Wayback Machine, starting from the earliest date already in the DB")
     parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed progress information")
+    parser.add_argument("--dry-run", dest="dry_run", action="store_true", help="Show what would be saved without writing to the database")
     parser.add_argument("--csv", nargs="?", const="nist_modules_in_process.csv", metavar="FILENAME",
                         help="Export all DB data to CSV (default: nist_modules_in_process.csv)")
     parser.add_argument("--csv-history", dest="csv_history", nargs="?", const="nist_module_history.csv", metavar="FILENAME",
@@ -439,8 +446,8 @@ if __name__ == "__main__":
             if existing else "1/1/2023"
         )
         print(f"Backfilling from {from_date}...")
-        scrape_from_wayback(from_date, verbose=args.verbose)
+        scrape_from_wayback(from_date, verbose=args.verbose, dry_run=args.dry_run)
     elif args.from_date:
-        scrape_from_wayback(args.from_date, to_date_str=args.to_date, verbose=args.verbose)
+        scrape_from_wayback(args.from_date, to_date_str=args.to_date, verbose=args.verbose, dry_run=args.dry_run)
     else:
-        scrape_modules_in_process(verbose=args.verbose)
+        scrape_modules_in_process(verbose=args.verbose, dry_run=args.dry_run)

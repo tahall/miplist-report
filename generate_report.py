@@ -3,10 +3,13 @@
 import argparse
 import json
 import sqlite3
+import sys
+from collections import Counter
 from datetime import datetime
 
 DB_FILE = "nist_modules_in_process.db"
 OUTPUT_FILE = "nist_mip_report.html"
+VALIDATED_URL = "https://csrc.nist.gov/projects/cryptographic-module-validation-program/validated-modules/search/all"
 
 STATUS_COLORS = {
     "Review Pending": "#4e79a7",
@@ -113,6 +116,51 @@ def build_chart_data(dates, counts):
     return datasets
 
 
+def fetch_validated_modules():
+    """Return {module_name_lower: (cert_num, vendor, val_date)} from NIST validated modules list."""
+    try:
+        import requests
+        from bs4 import BeautifulSoup as BS
+        resp = requests.get(VALIDATED_URL, timeout=30,
+                            headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"Warning: could not fetch validated modules list: {e}", file=sys.stderr)
+        return {}
+
+    from bs4 import BeautifulSoup as BS
+    soup = BS(resp.text, "html.parser")
+    table = soup.find("table", id="searchResultsTable")
+    if not table:
+        print("Warning: could not find validated modules table in NIST response.", file=sys.stderr)
+        return {}
+
+    result = {}
+    for tr in table.find_all("tr")[1:]:
+        cells = [td.get_text(strip=True) for td in tr.find_all("td")]
+        if len(cells) >= 5:
+            cert_num, vendor, module_name, _mod_type, val_date = cells[:5]
+            result[module_name.lower()] = (cert_num, vendor, val_date)
+
+    return result
+
+
+
+def vendor_breakdown_html(all_rows, new_date):
+    """Return HTML table of vendors ranked by current module count (top 25)."""
+    counts = Counter(vn for pd, _mn, vn, _std, _st in all_rows if pd == new_date)
+    if not counts:
+        return ""
+    trs = "".join(
+        f"<tr><td>{vendor}</td><td>{count}</td></tr>"
+        for vendor, count in counts.most_common(25)
+    )
+    return (
+        "<table><thead><tr><th>Vendor</th><th>Modules in Process</th></tr></thead>"
+        f"<tbody>{trs}</tbody></table>"
+    )
+
+
 def compute_module_stats(all_rows, dates):
     """Return (first_seen, status_since) dicts keyed by (module_name, vendor_name, standard).
 
@@ -148,15 +196,12 @@ def compute_module_stats(all_rows, dates):
     return first_seen, status_since
 
 
-def finalization_html(all_rows, new_date, first_seen=None, status_since=None):
-    """Return (html, count) for modules in Finalization as of new_date."""
+def finalization_html(all_rows, new_date, first_seen=None, status_since=None, validated=None):
+    """Return (html, count) for modules in Finalization as of new_date, sorted by days in status desc."""
     target = {"Finalization"}
     new_dt = datetime.strptime(new_date, "%m/%d/%Y")
-    rows = sorted(
-        [(r[1], r[2], r[3], r[4]) for r in all_rows
-         if r[0] == new_date and normalize_status(r[4]) in target],
-        key=lambda r: (normalize_status(r[3]), r[0]),
-    )
+    rows = [(r[1], r[2], r[3], r[4]) for r in all_rows
+            if r[0] == new_date and normalize_status(r[4]) in target]
     if not rows:
         return "<p>No modules currently in Finalization.</p>", 0
 
@@ -166,14 +211,27 @@ def finalization_html(all_rows, new_date, first_seen=None, status_since=None):
     def fmt_date(dt):
         return dt.strftime("%-m/%-d/%Y")
 
+    if status_since:
+        # Sort by days in status descending (longest wait first)
+        rows.sort(key=lambda r: status_since.get((r[0], r[1], r[2]), new_dt))
+    else:
+        rows.sort(key=lambda r: (normalize_status(r[3]), r[0]))
+
     if first_seen and status_since:
-        trs = "".join(
-            f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>"
-            f"<td>{fmt_date(first_seen.get((r[0], r[1], r[2]), new_dt))}</td>"
-            f"<td>{days_ago(status_since.get((r[0], r[1], r[2]), new_dt))}</td></tr>"
-            for r in rows
-        )
-        header = "<th>Module</th><th>Vendor</th><th>Standard</th><th>Status</th><th>First Seen</th><th>Days in Status</th>"
+        def row_html(r):
+            key = (r[0], r[1], r[2])
+            fs = fmt_date(first_seen.get(key, new_dt))
+            ds = days_ago(status_since.get(key, new_dt))
+            cert = ""
+            if validated is not None:
+                v = validated.get(r[0].lower())
+                cert = f"<td><a href='https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/{v[0]}' target='_blank'>#{v[0]}</a></td>" if v else "<td></td>"
+            return (f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>"
+                    f"<td>{fs}</td><td>{ds}</td>{cert}</tr>")
+
+        cert_header = "<th>Certificate</th>" if validated is not None else ""
+        header = f"<th>Module</th><th>Vendor</th><th>Standard</th><th>Status</th><th>First Seen</th><th>Days in Status</th>{cert_header}"
+        trs = "".join(row_html(r) for r in rows)
     else:
         trs = "".join(
             f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>"
@@ -271,7 +329,7 @@ def changes_html(prev_date, new_date, added, removed, changed):
     return "".join(p for p in parts if p)
 
 
-def generate_html(dates, counts, all_rows, chart_dates=None):
+def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=False, show_vendors=False):
     if chart_dates is None:
         chart_dates = dates
 
@@ -289,7 +347,13 @@ def generate_html(dates, counts, all_rows, chart_dates=None):
         chart_note = f"{len(dates)} publish dates"
 
     first_seen, status_since = compute_module_stats(all_rows, dates)
-    fin_html, fin_count = finalization_html(all_rows, new_date, first_seen=first_seen, status_since=status_since)
+    validated = fetch_validated_modules() if check_validated else None
+    fin_html, fin_count = finalization_html(all_rows, new_date, first_seen=first_seen, status_since=status_since, validated=validated)
+
+    vendor_section = (
+        f"<h2>Top Vendors by Modules in Process as of {new_date}</h2>"
+        f"<div class=\"changes\">{vendor_breakdown_html(all_rows, new_date)}</div>"
+    ) if show_vendors else ""
 
     changes_section = changes_html(prev_date, new_date, added, removed, changed)
     changes_title = f"Changes: {prev_date} → {new_date}" if prev_date else "Changes"
@@ -349,6 +413,8 @@ def generate_html(dates, counts, all_rows, chart_dates=None):
 {fin_html}
 </div>
 
+{vendor_section}
+
 <p class="footer">Generated {generated_at}</p>
 
 <script>
@@ -400,6 +466,10 @@ def main():
     parser = argparse.ArgumentParser(description="Generate HTML report from NIST MIP database.")
     parser.add_argument("-o", "--output", default=OUTPUT_FILE, help=f"Output HTML file (default: {OUTPUT_FILE})")
     parser.add_argument("--all", dest="all_dates", action="store_true", help="Chart all dates in the database (default: last 18 months)")
+    parser.add_argument("--check-validated", dest="check_validated", action="store_true",
+                        help="Cross-reference Finalization modules against the NIST validated list (requires network)")
+    parser.add_argument("--vendors", dest="show_vendors", action="store_true",
+                        help="Include top vendors by module count table")
     args = parser.parse_args()
 
     dates, counts, all_rows = load_data()
@@ -411,7 +481,8 @@ def main():
         cutoff = subtract_months(most_recent, 18)
         chart_dates = [d for d in dates if datetime.strptime(d, "%m/%d/%Y") >= cutoff]
 
-    html = generate_html(dates, counts, all_rows, chart_dates=chart_dates)
+    html = generate_html(dates, counts, all_rows, chart_dates=chart_dates,
+                         check_validated=args.check_validated, show_vendors=args.show_vendors)
 
     with open(args.output, "w") as f:
         f.write(html)
