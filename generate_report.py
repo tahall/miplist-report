@@ -3,6 +3,7 @@
 import argparse
 import html as html_mod
 import json
+import re
 import sqlite3
 import sys
 from collections import Counter
@@ -198,18 +199,25 @@ def compute_module_stats(all_rows, dates):
 
 
 def build_module_histories(all_rows, dates, keys):
-    """Return {key_str: [{date, status}, ...]} for the given module keys, sorted chronologically."""
+    """Return {key_str: [{date, status, status_date}, ...]} for the given module keys, sorted chronologically.
+
+    status_date is the date embedded in the raw status string (e.g. '9/2/2025' from
+    'Review Pending (9/2/2025)'), representing when the module entered that status.
+    """
     date_dt = {d: datetime.strptime(d, "%m/%d/%Y") for d in dates}
     key_set = set(keys)
     raw = {}
+    status_date_re = re.compile(r'\((\d{1,2}/\d{1,2}/\d{4})\)')
     for pub_date, mn, vn, std, status in all_rows:
         key = (mn, vn, std)
         if key in key_set:
             k_str = f"{mn}||{vn}||{std}"
-            raw.setdefault(k_str, []).append((pub_date, normalize_status(status)))
+            m = status_date_re.search(status)
+            status_date = m.group(1) if m else None
+            raw.setdefault(k_str, []).append((pub_date, normalize_status(status), status_date))
     return {
-        k: [{"date": d, "status": s}
-            for d, s in sorted(v, key=lambda x: date_dt.get(x[0], datetime.min))]
+        k: [{"date": d, "status": s, "status_date": sd}
+            for d, s, sd in sorted(v, key=lambda x: date_dt.get(x[0], datetime.min))]
         for k, v in raw.items()
     }
 
@@ -456,7 +464,7 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
     </div>
     <div class="modal-body">
       <table>
-        <thead><tr><th>Date</th><th>Status</th></tr></thead>
+        <thead><tr><th>Date Range</th><th>Status</th></tr></thead>
         <tbody id="historyBody"></tbody>
       </table>
     </div>
@@ -529,10 +537,20 @@ const moduleHistories = {histories_json};
 function showHistory(key) {{
   const history = moduleHistories[key];
   if (!history) return;
+  // Collapse into status runs; use embedded status_date as start when available
+  const runs = [];
+  for (const h of history) {{
+    if (runs.length && runs[runs.length - 1].status === h.status) {{
+      runs[runs.length - 1].end = h.date;
+    }} else {{
+      runs.push({{ start: h.status_date || h.date, end: h.date, status: h.status }});
+    }}
+  }}
   const parts = key.split('||');
   document.getElementById('modalTitle').textContent = parts[0] + ' — ' + parts[1];
-  document.getElementById('historyBody').innerHTML =
-    history.map(h => `<tr><td>${{h.date}}</td><td>${{h.status}}</td></tr>`).join('');
+  document.getElementById('historyBody').innerHTML = runs.map(r =>
+    `<tr><td>${{r.start === r.end ? r.start : r.start + ' – ' + r.end}}</td><td>${{r.status}}</td></tr>`
+  ).join('');
   document.getElementById('historyModal').classList.add('open');
 }}
 
