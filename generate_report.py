@@ -1,6 +1,7 @@
 """Generate an HTML report from the NIST CMVP Modules In Process database."""
 
 import argparse
+import html as html_mod
 import json
 import sqlite3
 import sys
@@ -196,6 +197,28 @@ def compute_module_stats(all_rows, dates):
     return first_seen, status_since
 
 
+def build_module_histories(all_rows, dates, keys):
+    """Return {key_str: [{date, status}, ...]} for the given module keys, sorted chronologically."""
+    date_dt = {d: datetime.strptime(d, "%m/%d/%Y") for d in dates}
+    key_set = set(keys)
+    raw = {}
+    for pub_date, mn, vn, std, status in all_rows:
+        key = (mn, vn, std)
+        if key in key_set:
+            k_str = f"{mn}||{vn}||{std}"
+            raw.setdefault(k_str, []).append((pub_date, normalize_status(status)))
+    return {
+        k: [{"date": d, "status": s}
+            for d, s in sorted(v, key=lambda x: date_dt.get(x[0], datetime.min))]
+        for k, v in raw.items()
+    }
+
+
+def _key_attr(mn, vn, std):
+    """Return an HTML-safe data-key attribute value for a module."""
+    return html_mod.escape(f"{mn}||{vn}||{std}", quote=True)
+
+
 def finalization_html(all_rows, new_date, first_seen=None, status_since=None, validated=None):
     """Return (html, count) for modules in Finalization as of new_date, sorted by days in status desc."""
     target = {"Finalization"}
@@ -226,7 +249,8 @@ def finalization_html(all_rows, new_date, first_seen=None, status_since=None, va
             if validated is not None:
                 v = validated.get(r[0].lower())
                 cert = f"<td><a href='https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/{v[0]}' target='_blank'>#{v[0]}</a></td>" if v else "<td></td>"
-            return (f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>"
+            ka = _key_attr(r[0], r[1], r[2])
+            return (f"<tr><td class='module-name' data-key='{ka}'>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>"
                     f"<td>{fs}</td><td>{ds}</td>{cert}</tr>")
 
         cert_header = "<th>Certificate</th>" if validated is not None else ""
@@ -234,7 +258,8 @@ def finalization_html(all_rows, new_date, first_seen=None, status_since=None, va
         trs = "".join(row_html(r) for r in rows)
     else:
         trs = "".join(
-            f"<tr><td>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>"
+            f"<tr><td class='module-name' data-key='{_key_attr(r[0], r[1], r[2])}'>{r[0]}</td>"
+            f"<td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td></tr>"
             for r in rows
         )
         header = "<th>Module</th><th>Vendor</th><th>Standard</th><th>Status</th>"
@@ -312,15 +337,15 @@ def changes_html(prev_date, new_date, added, removed, changed):
 
     def added_row(item):
         k, status = item
-        return f"<td>{k[0]}</td><td>{k[1]}</td><td>{k[2]}</td><td>{status}</td>"
+        return f"<td class='module-name' data-key='{_key_attr(*k)}'>{k[0]}</td><td>{k[1]}</td><td>{k[2]}</td><td>{status}</td>"
 
     def removed_row(item):
         k, status = item
-        return f"<td>{k[0]}</td><td>{k[1]}</td><td>{k[2]}</td><td>{status}</td>"
+        return f"<td class='module-name' data-key='{_key_attr(*k)}'>{k[0]}</td><td>{k[1]}</td><td>{k[2]}</td><td>{status}</td>"
 
     def changed_row(item):
         k, old_s, new_s = item
-        return f"<td>{k[0]}</td><td>{k[1]}</td><td>{k[2]}</td><td>{old_s}</td><td>{new_s}</td>"
+        return f"<td class='module-name' data-key='{_key_attr(*k)}'>{k[0]}</td><td>{k[1]}</td><td>{k[2]}</td><td>{old_s}</td><td>{new_s}</td>"
 
     parts.append(section("Added", added, added_row))
     parts.append(section("Removed", removed, removed_row))
@@ -349,6 +374,13 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
     first_seen, status_since = compute_module_stats(all_rows, dates)
     validated = fetch_validated_modules() if check_validated else None
     fin_html, fin_count = finalization_html(all_rows, new_date, first_seen=first_seen, status_since=status_since, validated=validated)
+
+    # Build module histories for all modules visible in the report
+    history_keys = (
+        {k for k, _ in added} | {k for k, _ in removed} | {k for k, _, _ in changed}
+        | {(r[1], r[2], r[3]) for r in all_rows if r[0] == new_date and normalize_status(r[4]) == "Finalization"}
+    )
+    histories_json = json.dumps(build_module_histories(all_rows, dates, history_keys))
 
     vendor_section = (
         f"<h2>Top Vendors by Modules in Process as of {new_date}</h2>"
@@ -392,9 +424,44 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
   tr:last-child td {{ border-bottom: none; }}
   tr:hover td {{ background: #f8f9fa; }}
   .footer {{ color: #adb5bd; font-size: 0.78rem; margin-top: 28px; }}
+  .module-name {{ cursor: pointer; color: #4e79a7; text-decoration: underline dotted; }}
+  .module-name:hover {{ color: #2c5282; }}
+  .modal-overlay {{
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 100;
+    align-items: center; justify-content: center;
+  }}
+  .modal-overlay.open {{ display: flex; }}
+  .modal-box {{
+    background: #fff; border-radius: 10px; padding: 28px 32px;
+    max-width: 700px; width: 90%; max-height: 80vh;
+    display: flex; flex-direction: column; box-shadow: 0 8px 32px rgba(0,0,0,.2);
+  }}
+  .modal-header {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }}
+  .modal-header h3 {{ margin: 0; font-size: 1rem; color: #212529; max-width: 90%; }}
+  .modal-close {{
+    background: none; border: none; font-size: 1.4rem; cursor: pointer;
+    color: #6c757d; line-height: 1; padding: 0 4px;
+  }}
+  .modal-close:hover {{ color: #212529; }}
+  .modal-body {{ overflow-y: auto; }}
 </style>
 </head>
 <body>
+<div class="modal-overlay" id="historyModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modalTitle"></h3>
+      <button class="modal-close" id="modalClose">&#x2715;</button>
+    </div>
+    <div class="modal-body">
+      <table>
+        <thead><tr><th>Date</th><th>Status</th></tr></thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
 <h1>NIST CMVP Modules In Process</h1>
 <p class="subtitle">Source: <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CSRC</a> &mdash; {chart_note} &mdash; most recent: {new_date}</p>
 
@@ -456,6 +523,30 @@ new Chart(ctx, {{
   }}
 }});
 
+
+const moduleHistories = {histories_json};
+
+function showHistory(key) {{
+  const history = moduleHistories[key];
+  if (!history) return;
+  const parts = key.split('||');
+  document.getElementById('modalTitle').textContent = parts[0] + ' — ' + parts[1];
+  document.getElementById('historyBody').innerHTML =
+    history.map(h => `<tr><td>${{h.date}}</td><td>${{h.status}}</td></tr>`).join('');
+  document.getElementById('historyModal').classList.add('open');
+}}
+
+document.getElementById('modalClose').addEventListener('click', () =>
+  document.getElementById('historyModal').classList.remove('open'));
+document.getElementById('historyModal').addEventListener('click', e => {{
+  if (e.target === e.currentTarget)
+    e.currentTarget.classList.remove('open');
+}});
+document.addEventListener('keydown', e => {{
+  if (e.key === 'Escape') document.getElementById('historyModal').classList.remove('open');
+}});
+document.querySelectorAll('.module-name').forEach(td =>
+  td.addEventListener('click', () => showHistory(td.dataset.key)));
 </script>
 </body>
 </html>
