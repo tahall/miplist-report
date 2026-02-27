@@ -515,6 +515,7 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
 {vendor_section}
 
 <p class="footer">Generated {generated_at}</p>
+<p class="footer">This is an unofficial tool and is not affiliated with or endorsed by NIST or the Internet Archive. Data is scraped from the <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CMVP Modules In Process list</a>; historical data is sourced from the <a href="https://web.archive.org" target="_blank">Wayback Machine</a>. This data may not be complete or accurate. Always refer to the official NIST source for authoritative information.</p>
 
 <script>
 const ctx = document.getElementById('mipChart').getContext('2d');
