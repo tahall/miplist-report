@@ -363,10 +363,7 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
     totals = [sum(counts.get(d, {}).values()) for d in chart_dates]
     y_max = max(totals) * 1.1 if totals else 100
 
-    if len(chart_dates) < len(dates):
-        chart_note = f"showing {len(chart_dates)} of {len(dates)} publish dates (last 12 months)"
-    else:
-        chart_note = f"{len(dates)} publish dates"
+    chart_note = f"most recent: {new_date}"
 
     status_since = compute_module_stats(all_rows, dates)
     validated = fetch_validated_modules() if check_validated else None
@@ -492,7 +489,7 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
   </div>
 </div>
 <h1>NIST CMVP Modules In Process</h1>
-<p class="subtitle">Source: <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CSRC</a> &mdash; {chart_note} &mdash; most recent: {new_date}</p>
+<p class="subtitle">Source: <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CSRC</a> &mdash; {chart_note}</p>
 
 <h2>Status Over Time</h2>
 <div class="chart-row">
