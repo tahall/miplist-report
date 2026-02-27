@@ -10,7 +10,7 @@ from collections import Counter
 from datetime import datetime
 
 DB_FILE = "nist_modules_in_process.db"
-OUTPUT_FILE = "nist_mip_report.html"
+OUTPUT_FILE = "index.html"
 VALIDATED_URL = "https://csrc.nist.gov/projects/cryptographic-module-validation-program/validated-modules/search/all"
 
 STATUS_COLORS = {
