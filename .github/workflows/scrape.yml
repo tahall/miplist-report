@@ -1,0 +1,36 @@
+name: Scrape and Report
+
+on:
+  schedule:
+    - cron: '0 8 * * *'  # 3 AM EST (8 AM UTC) / 4 AM EDT (8 AM UTC)
+  workflow_dispatch:      # allow manual trigger from GitHub UI
+
+permissions:
+  contents: write
+
+jobs:
+  scrape-and-report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Scrape NIST MIP list
+        run: python scrape_nist_mip.py
+
+      - name: Generate HTML report
+        run: python generate_report.py
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add nist_modules_in_process.db nist_mip_report.html
+          git diff --staged --quiet || git commit -m "Update database and report [$(date -u '+%Y-%m-%d')]"
+          git push
