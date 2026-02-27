@@ -164,15 +164,12 @@ def vendor_breakdown_html(all_rows, new_date):
 
 
 def compute_module_stats(all_rows, dates):
-    """Return (first_seen, status_since) dicts keyed by (module_name, vendor_name, standard).
+    """Return status_since dict keyed by (module_name, vendor_name, standard).
 
-    first_seen: earliest publish_date the module appeared (as datetime)
     status_since: earliest publish_date of the current unbroken normalized-status run (as datetime)
     """
     date_dt = {d: datetime.strptime(d, "%m/%d/%Y") for d in dates}
-    sorted_dates = sorted(dates, key=lambda d: date_dt[d])
 
-    # Build {key: [(date, norm_status), ...]} sorted chronologically
     history = {}
     for pub_date, module_name, vendor_name, standard, status in all_rows:
         key = (module_name, vendor_name, standard)
@@ -181,11 +178,8 @@ def compute_module_stats(all_rows, dates):
     for key in history:
         history[key].sort(key=lambda x: date_dt.get(x[0], datetime.min))
 
-    first_seen = {}
     status_since = {}
     for key, entries in history.items():
-        first_seen[key] = date_dt[entries[0][0]]
-        # Walk backwards to find start of current status run
         current_status = entries[-1][1]
         run_start = entries[-1][0]
         for pub_date, norm_status in reversed(entries[:-1]):
@@ -195,7 +189,7 @@ def compute_module_stats(all_rows, dates):
                 break
         status_since[key] = date_dt[run_start]
 
-    return first_seen, status_since
+    return status_since
 
 
 def build_module_histories(all_rows, dates, keys):
@@ -227,7 +221,7 @@ def _key_attr(mn, vn, std):
     return html_mod.escape(f"{mn}||{vn}||{std}", quote=True)
 
 
-def finalization_html(all_rows, new_date, first_seen=None, status_since=None, validated=None):
+def finalization_html(all_rows, new_date, status_since=None, validated=None):
     """Return (html, count) for modules in Finalization as of new_date, sorted by days in status desc."""
     target = {"Finalization"}
     new_dt = datetime.strptime(new_date, "%m/%d/%Y")
@@ -239,19 +233,14 @@ def finalization_html(all_rows, new_date, first_seen=None, status_since=None, va
     def days_ago(dt):
         return (new_dt - dt).days
 
-    def fmt_date(dt):
-        return dt.strftime("%-m/%-d/%Y")
-
     if status_since:
-        # Sort by days in status descending (longest wait first)
         rows.sort(key=lambda r: status_since.get((r[0], r[1], r[2]), new_dt))
     else:
         rows.sort(key=lambda r: (normalize_status(r[3]), r[0]))
 
-    if first_seen and status_since:
+    if status_since:
         def row_html(r):
             key = (r[0], r[1], r[2])
-            fs = fmt_date(first_seen.get(key, new_dt))
             ds = days_ago(status_since.get(key, new_dt))
             cert = ""
             if validated is not None:
@@ -259,10 +248,10 @@ def finalization_html(all_rows, new_date, first_seen=None, status_since=None, va
                 cert = f"<td><a href='https://csrc.nist.gov/projects/cryptographic-module-validation-program/certificate/{v[0]}' target='_blank'>#{v[0]}</a></td>" if v else "<td></td>"
             ka = _key_attr(r[0], r[1], r[2])
             return (f"<tr><td class='module-name' data-key='{ka}'>{r[0]}</td><td>{r[1]}</td><td>{r[2]}</td><td>{r[3]}</td>"
-                    f"<td>{fs}</td><td>{ds}</td>{cert}</tr>")
+                    f"<td>{ds}</td>{cert}</tr>")
 
         cert_header = "<th>Certificate</th>" if validated is not None else ""
-        header = f"<th>Module</th><th>Vendor</th><th>Standard</th><th>Status</th><th>First Seen</th><th>Days in Status</th>{cert_header}"
+        header = f"<th>Module</th><th>Vendor</th><th>Standard</th><th>Status</th><th>Days in Status</th>{cert_header}"
         trs = "".join(row_html(r) for r in rows)
     else:
         trs = "".join(
@@ -375,13 +364,13 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
     y_max = max(totals) * 1.1 if totals else 100
 
     if len(chart_dates) < len(dates):
-        chart_note = f"showing {len(chart_dates)} of {len(dates)} publish dates (last 18 months)"
+        chart_note = f"showing {len(chart_dates)} of {len(dates)} publish dates (last 12 months)"
     else:
         chart_note = f"{len(dates)} publish dates"
 
-    first_seen, status_since = compute_module_stats(all_rows, dates)
+    status_since = compute_module_stats(all_rows, dates)
     validated = fetch_validated_modules() if check_validated else None
-    fin_html, fin_count = finalization_html(all_rows, new_date, first_seen=first_seen, status_since=status_since, validated=validated)
+    fin_html, fin_count = finalization_html(all_rows, new_date, status_since=status_since, validated=validated)
 
     # Build module histories for all modules visible in the report
     history_keys = (
@@ -394,6 +383,23 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
         f"<h2>Top Vendors by Modules in Process as of {new_date}</h2>"
         f"<div class=\"changes\">{vendor_breakdown_html(all_rows, new_date)}</div>"
     ) if show_vendors else ""
+
+    # Current-day summary panel
+    day_counts = counts.get(new_date, {})
+    day_total = sum(day_counts.values())
+    summary_rows = "".join(
+        f"<tr><td><span class='swatch' style='background:{STATUS_COLORS.get(s, DEFAULT_COLOR)}'></span>{s}</td>"
+        f"<td class='sum-n'>{day_counts[s]:,}</td></tr>"
+        for s in ALL_STATUSES if day_counts.get(s, 0) > 0
+    )
+    summary_html = (
+        f"<div class='chart-summary'>"
+        f"<div class='sum-title'>Today's Summary</div>"
+        f"<div class='sum-date'>{new_date}</div>"
+        f"<table class='sum-table'><tbody>{summary_rows}"
+        f"<tr class='sum-total'><td>Total</td><td class='sum-n'>{day_total:,}</td></tr>"
+        f"</tbody></table></div>"
+    )
 
     changes_section = changes_html(prev_date, new_date, added, removed, changed)
     changes_title = f"Changes: {prev_date} → {new_date}" if prev_date else "Changes"
@@ -423,8 +429,23 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
     display: inline-block; background: #dee2e6; color: #495057;
     border-radius: 10px; padding: 1px 8px; font-size: 0.8rem; font-weight: 600;
   }}
-  .chart-container {{ background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }}
+  .chart-row {{ display: flex; gap: 16px; align-items: stretch; }}
+  .chart-container {{ flex: 1; min-width: 0; background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }}
   canvas {{ max-height: 420px; }}
+  .chart-summary {{
+    width: 250px; flex-shrink: 0;
+    background: #fff; border-radius: 8px; padding: 16px 28px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    display: flex; flex-direction: column; justify-content: center;
+  }}
+  .sum-title {{ font-size: 0.95rem; font-weight: 700; color: #212529; margin-bottom: 2px; text-align: center; }}
+  .sum-date {{ font-size: 0.8rem; color: #6c757d; margin-bottom: 12px; text-align: center; }}
+  .sum-table {{ border-collapse: collapse; width: 100%; font-size: 0.85rem; }}
+  .sum-table td {{ padding: 4px 6px; border: none; }}
+  .sum-table tr:hover td {{ background: #f8f9fa; }}
+  .sum-n {{ text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }}
+  .sum-total td {{ border-top: 2px solid #dee2e6; font-weight: 700; padding-top: 6px; }}
+  .swatch {{ display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }}
   .changes {{ background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-top: 8px; }}
   table {{ border-collapse: collapse; width: 100%; font-size: 0.85rem; }}
   th {{ background: #f1f3f5; text-align: left; padding: 6px 10px; font-weight: 600; border-bottom: 2px solid #dee2e6; }}
@@ -474,8 +495,11 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
 <p class="subtitle">Source: <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CSRC</a> &mdash; {chart_note} &mdash; most recent: {new_date}</p>
 
 <h2>Status Over Time</h2>
-<div class="chart-container">
-  <canvas id="mipChart"></canvas>
+<div class="chart-row">
+  <div class="chart-container">
+    <canvas id="mipChart"></canvas>
+  </div>
+{summary_html}
 </div>
 
 <h2>{changes_title}</h2>
@@ -546,9 +570,13 @@ function showHistory(key) {{
       runs.push({{ start: h.status_date || h.date, end: h.date, status: h.status }});
     }}
   }}
+  // If a status appears more than once, keep only the latest run
+  const latest = {{}};
+  runs.forEach(r => {{ latest[r.status] = r; }});
+  const dedupedRuns = runs.filter(r => latest[r.status] === r);
   const parts = key.split('||');
   document.getElementById('modalTitle').textContent = parts[0] + ' — ' + parts[1];
-  document.getElementById('historyBody').innerHTML = runs.map(r =>
+  document.getElementById('historyBody').innerHTML = dedupedRuns.map(r =>
     `<tr><td>${{r.start === r.end ? r.start : r.start + ' – ' + r.end}}</td><td>${{r.status}}</td></tr>`
   ).join('');
   document.getElementById('historyModal').classList.add('open');
@@ -587,7 +615,7 @@ def main():
         chart_dates = dates
     else:
         most_recent = datetime.strptime(dates[-1], "%m/%d/%Y")
-        cutoff = subtract_months(most_recent, 18)
+        cutoff = subtract_months(most_recent, 12)
         chart_dates = [d for d in dates if datetime.strptime(d, "%m/%d/%Y") >= cutoff]
 
     html = generate_html(dates, counts, all_rows, chart_dates=chart_dates,
