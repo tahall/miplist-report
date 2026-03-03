@@ -2,7 +2,7 @@ name: Scrape and Report
 
 on:
   schedule:
-    - cron: '0 22 * * *'  # 5 PM EST (22 UTC) / 6 PM EDT (22 UTC)
+    - cron: '0 10 * * *'  # 5 AM EST (10 UTC) / 6 AM EDT (10 UTC)
   workflow_dispatch:      # allow manual trigger from GitHub UI
 
 permissions:
