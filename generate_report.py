@@ -45,6 +45,20 @@ ALL_STATUSES = [
     "Not Displayed",
 ]
 
+# Chart legend groups: (display_label, [source_statuses_to_sum], color)
+# Combined entries merge legacy + current names into one bar series.
+CHART_STATUS_GROUPS = [
+    ("Review Pending / Pending Review", ["Review Pending", "Pending Review"],    "#4e79a7"),
+    ("In Review / Review",              ["In Review", "Review"],                  "#f28e2b"),
+    ("Coordination",                    ["Coordination"],                          "#59a14f"),
+    ("Comment Resolution - CMVP",       ["Comment Resolution - CMVP"],             "#3a7d35"),
+    ("Comment Resolution - Lab",        ["Comment Resolution - Lab"],              "#76c068"),
+    ("On Hold / Hold",                  ["On Hold", "Hold"],                       "#e05c5c"),
+    ("Cost Recovery",                   ["Cost Recovery"],                         "#c47d0e"),
+    ("Finalization",                    ["Finalization"],                           "#9467bd"),
+    ("Not Displayed",                   ["Not Displayed"],                          "#bab0ac"),
+]
+
 
 def subtract_months(dt, n):
     """Return dt shifted back by n calendar months."""
@@ -124,17 +138,13 @@ def compute_changes(dates, all_rows):
 
 def build_chart_data(dates, counts):
     datasets = []
-    for status in ALL_STATUSES:
+    for label, source_statuses, color in CHART_STATUS_GROUPS:
         data = [
             {"x": datetime.strptime(d, "%m/%d/%Y").strftime("%Y-%m-%d"),
-             "y": counts.get(d, {}).get(status, 0)}
+             "y": sum(counts.get(d, {}).get(s, 0) for s in source_statuses)}
             for d in dates
         ]
-        datasets.append({
-            "label": status,
-            "data": data,
-            "backgroundColor": STATUS_COLORS.get(status, DEFAULT_COLOR),
-        })
+        datasets.append({"label": label, "data": data, "backgroundColor": color})
     return datasets
 
 
