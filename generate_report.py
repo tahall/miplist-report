@@ -546,6 +546,7 @@ new Chart(ctx, {{
       legend: {{ position: 'top' }},
       tooltip: {{
         mode: 'index',
+        filter: (item) => item.parsed.y > 0,
         callbacks: {{
           title: (items) => items[0]?.label ?? '',
           footer: (items) => {{
