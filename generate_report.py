@@ -14,16 +14,36 @@ OUTPUT_FILE = "index.html"
 VALIDATED_URL = "https://csrc.nist.gov/projects/cryptographic-module-validation-program/validated-modules/search/all"
 
 STATUS_COLORS = {
-    "Review Pending": "#4e79a7",
-    "In Review":      "#f28e2b",
-    "Coordination":   "#59a14f",
-    "Finalization":   "#9467bd",
-    "On Hold":        "#e05c5c",
-    "Not Displayed":  "#bab0ac",
+    # Current status names
+    "Pending Review":            "#4e79a7",
+    "Review":                    "#f28e2b",
+    "Comment Resolution - CMVP": "#3a7d35",
+    "Comment Resolution - Lab":  "#76c068",
+    "Hold":                      "#e05c5c",
+    "Cost Recovery":             "#c47d0e",
+    "Finalization":              "#9467bd",
+    "Not Displayed":             "#bab0ac",
+    # Legacy status names (historical data)
+    "Review Pending":            "#4e79a7",
+    "In Review":                 "#f28e2b",
+    "Coordination":              "#59a14f",
+    "On Hold":                   "#e05c5c",
 }
 DEFAULT_COLOR = "#bab0ac"
 
-ALL_STATUSES = ["Review Pending", "In Review", "Coordination", "Finalization", "On Hold", "Not Displayed"]
+ALL_STATUSES = [
+    # Review group
+    "Review Pending", "Pending Review",
+    # In Review group
+    "In Review", "Review",
+    # Coordination / Comment Resolution group
+    "Coordination", "Comment Resolution - CMVP", "Comment Resolution - Lab",
+    # Hold group
+    "On Hold", "Hold", "Cost Recovery",
+    # Terminal / other
+    "Finalization",
+    "Not Displayed",
+]
 
 
 def subtract_months(dt, n):
