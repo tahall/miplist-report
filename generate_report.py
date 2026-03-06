@@ -21,6 +21,7 @@ STATUS_COLORS = {
     "Comment Resolution - Lab":  "#76c068",
     "Hold":                      "#e05c5c",
     "Cost Recovery":             "#c47d0e",
+    "Pending Resubmission":      "#d4799a",
     "Finalization":              "#9467bd",
     "Not Displayed":             "#bab0ac",
     # Legacy status names (historical data)
@@ -39,7 +40,7 @@ ALL_STATUSES = [
     # Coordination / Comment Resolution group
     "Coordination", "Comment Resolution - CMVP", "Comment Resolution - Lab",
     # Hold group
-    "On Hold", "Hold", "Cost Recovery",
+    "On Hold", "Hold", "Cost Recovery", "Pending Resubmission",
     # Terminal / other
     "Finalization",
     "Not Displayed",
@@ -55,6 +56,7 @@ CHART_STATUS_GROUPS = [
     ("Comment Resolution - Lab",        ["Comment Resolution - Lab"],              "#76c068"),
     ("On Hold / Hold",                  ["On Hold", "Hold"],                       "#e05c5c"),
     ("Cost Recovery",                   ["Cost Recovery"],                         "#c47d0e"),
+    ("Pending Resubmission",            ["Pending Resubmission"],                  "#d4799a"),
     ("Finalization",                    ["Finalization"],                           "#9467bd"),
     ("Not Displayed",                   ["Not Displayed"],                          "#bab0ac"),
 ]
