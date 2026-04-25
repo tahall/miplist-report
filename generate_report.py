@@ -605,8 +605,8 @@ def compute_aging(all_rows, dates, status_since):
         days = sorted(group_days[label]["days"])
         result.append({
             "label": label, "color": color, "count": len(days),
-            "median": pct(days, 50), "p75": pct(days, 75),
-            "p90": pct(days, 90), "max": days[-1],
+            "p25": pct(days, 25), "median": pct(days, 50),
+            "p75": pct(days, 75), "p90": pct(days, 90), "max": days[-1],
         })
     return result
 
