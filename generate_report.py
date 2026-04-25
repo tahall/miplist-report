@@ -571,9 +571,10 @@ def generate_stats_html(dates, counts, all_rows):
         if e is None:
             return "<td class='no-data' colspan='3'>—</td>"
         high_v, high_ds, med_v, low_v, low_ds = e
-        return (f"<td class='num'>{high_v:,}</td>"
-                f"<td class='num'>{med_v:,.1f}</td>"
-                f"<td class='num'>{low_v:,}</td>")
+        return (f"<td class='num'><span>{high_v:,}</span></td>"
+                f"<td class='num'><span>{med_v:,.1f}</span></td>"
+                f"<td class='num'><span>{low_v:,}</span></td>")
+
 
     ext_rows = ""
     for row in extremes:
@@ -582,7 +583,7 @@ def generate_stats_html(dates, counts, all_rows):
         sep = " class='sep-row'" if label == "Total" else ""
         ext_rows += (
             f"<tr{sep}><td>{swatch}{label}</td>"
-            f"<td class='num'>{current:,}</td>"
+            f"<td class='num'><span>{current:,}</span></td>"
             f"{ext_cell(row['recent'])}"
             f"{ext_cell(row['alltime'])}</tr>"
         )
@@ -591,13 +592,13 @@ def generate_stats_html(dates, counts, all_rows):
   <thead>
     <tr>
       <th rowspan='2'>Status</th>
-      <th rowspan='2'>Current</th>
+      <th class='num' rowspan='2'>Current</th>
       <th colspan='3'>Last 12 Months</th>
       <th colspan='3'>All Time</th>
     </tr>
     <tr>
-      <th>High</th><th>Median</th><th>Low</th>
-      <th>High</th><th>Median</th><th>Low</th>
+      <th class='num'>High</th><th class='num'>Median</th><th class='num'>Low</th>
+      <th class='num'>High</th><th class='num'>Median</th><th class='num'>Low</th>
     </tr>
   </thead>
   <tbody>{ext_rows}</tbody>
@@ -691,7 +692,9 @@ def generate_stats_html(dates, counts, all_rows):
   tr:last-child td {{ border-bottom: none; }}
   tr:hover td {{ background: #f8f9fa; }}
   td.no-data {{ color: #adb5bd; text-align: center; }}
-  td.num {{ text-align: center; font-variant-numeric: tabular-nums; }}
+  th.num {{ text-align: center; }}
+  td.num {{ text-align: center; }}
+  td.num span {{ display: inline-block; text-align: right; min-width: 5ch; font-variant-numeric: tabular-nums; }}
   small {{ color: #6c757d; }}
   tr.sep-row td {{ border-top: 2px solid #dee2e6; font-weight: 700; }}
   .delta {{ font-size: 0.78rem; font-weight: 500; }}
