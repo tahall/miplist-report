@@ -473,7 +473,7 @@ def compute_forecasts(dates, counts):
            with exponential decay weights (decay=0.97/day) so recent data counts more.
     ewma:  exponential weighted moving average (alpha=0.05), flat projection.
     """
-    DECAY = 0.97
+    DECAY = 0.95
     HORIZONS = [30, 91]
 
     most_recent_dt = datetime.strptime(dates[-1], "%m/%d/%Y")
@@ -518,6 +518,13 @@ def compute_forecasts(dates, counts):
 
         result.append({"label": label, "color": color, "current": current,
                         "trend": trend})
+
+    # Replace Total's trend with the sum of individual group trends so the
+    # table adds up correctly.
+    non_total = [r for r in result if r["label"] != "Total"]
+    total = next(r for r in result if r["label"] == "Total")
+    total["trend"] = [sum(r["trend"][i] for r in non_total) for i in range(len(HORIZONS))]
+
     return result
 
 
@@ -858,7 +865,7 @@ new Chart(ctx, {{
 </div>
 
 <h2>Status Forecast</h2>
-<p class="note">+1 and +3 month projections using weighted least squares (exponential decay, half-life ≈ 23 days) on data from Mar 6 2026 onward. Deltas vs. current in parentheses.</p>
+<p class="note">+1 and +3 month projections using weighted least squares (exponential decay, half-life ≈ 14 days) on data from Mar 6 2026 onward. Deltas vs. current in parentheses.</p>
 <div class="card">
 {fcast_table}
 </div>
