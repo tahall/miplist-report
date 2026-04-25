@@ -567,14 +567,14 @@ def generate_stats_html(dates, counts, all_rows):
     # Extremes table
     extremes = compute_extremes(dates, counts)
 
-    def ext_cell(e):
+    def ext_cell(e, divider=False):
+        div = " divider" if divider else ""
         if e is None:
-            return "<td class='no-data' colspan='3'>—</td>"
+            return f"<td class='no-data{div}' colspan='3'>—</td>"
         high_v, high_ds, med_v, low_v, low_ds = e
-        return (f"<td class='num'><span>{high_v:,}</span></td>"
+        return (f"<td class='num{div}'><span>{high_v:,}</span></td>"
                 f"<td class='num'><span>{med_v:,.1f}</span></td>"
                 f"<td class='num'><span>{low_v:,}</span></td>")
-
 
     ext_rows = ""
     for row in extremes:
@@ -584,8 +584,8 @@ def generate_stats_html(dates, counts, all_rows):
         ext_rows += (
             f"<tr{sep}><td>{swatch}{label}</td>"
             f"<td class='num'><span>{current:,}</span></td>"
-            f"{ext_cell(row['recent'])}"
-            f"{ext_cell(row['alltime'])}</tr>"
+            f"{ext_cell(row['recent'], divider=True)}"
+            f"{ext_cell(row['alltime'], divider=True)}</tr>"
         )
 
     ext_table = f"""<table>
@@ -593,12 +593,12 @@ def generate_stats_html(dates, counts, all_rows):
     <tr>
       <th rowspan='2'>Status</th>
       <th class='num' rowspan='2'>Current</th>
-      <th colspan='3'>Last 12 Months</th>
-      <th colspan='3'>All Time</th>
+      <th colspan='3' class='divider'>Last 12 Months</th>
+      <th colspan='3' class='divider'>All Time</th>
     </tr>
     <tr>
-      <th class='num'>High</th><th class='num'>Median</th><th class='num'>Low</th>
-      <th class='num'>High</th><th class='num'>Median</th><th class='num'>Low</th>
+      <th class='num divider'>High</th><th class='num'>Median</th><th class='num'>Low</th>
+      <th class='num divider'>High</th><th class='num'>Median</th><th class='num'>Low</th>
     </tr>
   </thead>
   <tbody>{ext_rows}</tbody>
@@ -697,6 +697,7 @@ def generate_stats_html(dates, counts, all_rows):
   td.num span {{ display: inline-block; text-align: right; min-width: 5ch; font-variant-numeric: tabular-nums; }}
   small {{ color: #6c757d; }}
   tr.sep-row td {{ border-top: 2px solid #dee2e6; font-weight: 700; }}
+  .divider {{ border-left: 2px solid #dee2e6; }}
   .delta {{ font-size: 0.78rem; font-weight: 500; }}
   .delta.pos {{ color: #2c7a2c; }}
   .delta.neg {{ color: #c0392b; }}
