@@ -8,9 +8,11 @@ import sqlite3
 import sys
 from collections import Counter
 from datetime import datetime
+from statistics import mean, median
 
 DB_FILE = "nist_modules_in_process.db"
 OUTPUT_FILE = "index.html"
+STATS_OUTPUT_FILE = "miplist-stats.html"
 VALIDATED_URL = "https://csrc.nist.gov/projects/cryptographic-module-validation-program/validated-modules/search/all"
 
 STATUS_COLORS = {
@@ -59,6 +61,20 @@ CHART_STATUS_GROUPS = [
     ("Pending Resubmission",            ["Pending Resubmission"],                  "#d4799a"),
     ("Finalization",                    ["Finalization"],                           "#9467bd"),
     ("Not Displayed",                   ["Not Displayed"],                          "#bab0ac"),
+]
+
+# Map legacy status names to current equivalents for stats aggregation
+LEGACY_STATUS_MAP = {
+    "Review Pending": "Pending Review",
+    "In Review":      "Review",
+    "On Hold":        "Hold",
+}
+
+# Ordered list of statuses to show in the stats page duration table
+STATS_STATUSES = [
+    "Pending Review", "Review", "Coordination",
+    "Comment Resolution - CMVP", "Comment Resolution - Lab",
+    "Hold", "Cost Recovery", "Pending Resubmission", "Finalization",
 ]
 
 
@@ -148,6 +164,70 @@ def build_chart_data(dates, counts):
         ]
         datasets.append({"label": label, "data": data, "backgroundColor": color})
     return datasets
+
+
+def compute_status_durations(all_rows, dates):
+    """Return {quarter_str: {status: [duration_days]}} for completed status runs.
+
+    Durations are computed snapshot-to-snapshot. Legacy status names are mapped
+    to their current equivalents before grouping.
+    """
+    date_dt = {d: datetime.strptime(d, "%m/%d/%Y") for d in dates}
+
+    def norm(raw):
+        s = normalize_status(raw)
+        return LEGACY_STATUS_MAP.get(s, s)
+
+    def quarter_str(dt):
+        return f"Q{(dt.month - 1) // 3 + 1} {dt.year}"
+
+    history = {}
+    for pub_date, mn, vn, std, status in all_rows:
+        key = (mn, vn, std)
+        history.setdefault(key, []).append((date_dt[pub_date], norm(status)))
+    for key in history:
+        history[key].sort()
+
+    result = {}
+    for entries in history.values():
+        runs = []
+        for dt, status in entries:
+            if runs and runs[-1][2] == status:
+                runs[-1][1] = dt
+            else:
+                runs.append([dt, dt, status])
+        for i in range(len(runs) - 1):
+            days = (runs[i + 1][0] - runs[i][0]).days
+            status = runs[i][2]
+            q = quarter_str(runs[i + 1][0])
+            result.setdefault(q, {}).setdefault(status, []).append(days)
+
+    return result
+
+
+def compute_quarterly_changes(all_rows, dates):
+    """Return list of (quarter_str, added, removed) tuples sorted chronologically."""
+    date_dt = {d: datetime.strptime(d, "%m/%d/%Y") for d in dates}
+    sorted_dates = sorted(dates, key=lambda d: date_dt[d])
+
+    keys_by_date = {}
+    for pub_date, mn, vn, std, _status in all_rows:
+        keys_by_date.setdefault(pub_date, set()).add((mn, vn, std))
+
+    quarterly = {}
+    for i in range(1, len(sorted_dates)):
+        prev, curr = sorted_dates[i - 1], sorted_dates[i]
+        added = len(keys_by_date.get(curr, set()) - keys_by_date.get(prev, set()))
+        removed = len(keys_by_date.get(prev, set()) - keys_by_date.get(curr, set()))
+        q = (date_dt[curr].year, (date_dt[curr].month - 1) // 3 + 1)
+        quarterly.setdefault(q, {"added": 0, "removed": 0})
+        quarterly[q]["added"] += added
+        quarterly[q]["removed"] += removed
+
+    return [
+        (f"Q{q[1]} {q[0]}", v["added"], v["removed"])
+        for q, v in sorted(quarterly.items())
+    ]
 
 
 def fetch_validated_modules():
@@ -383,6 +463,329 @@ def changes_html(prev_date, new_date, added, removed, changed):
     return "".join(p for p in parts if p)
 
 
+
+def compute_forecasts(dates, counts):
+    """Return list of {label, color, current, trend: [+30d,+91d], ewma: value}.
+
+    trend: weighted least squares on data from Mar 6 2026 onward (up to 3 months back),
+           with exponential decay weights (decay=0.97/day) so recent data counts more.
+    ewma:  exponential weighted moving average (alpha=0.05), flat projection.
+    """
+    DECAY = 0.97
+    HORIZONS = [30, 91]
+
+    most_recent_dt = datetime.strptime(dates[-1], "%m/%d/%Y")
+    cutoff = max(subtract_months(most_recent_dt, 3), datetime(2026, 3, 6))
+    recent_dates = [d for d in dates if datetime.strptime(d, "%m/%d/%Y") >= cutoff]
+    new_date = dates[-1]
+
+    groups = list(CHART_STATUS_GROUPS) + [("Total", None, None)]
+    result = []
+
+    for label, source_statuses, color in groups:
+        def val_for(d, ss=source_statuses):
+            if ss is None:
+                return sum(counts.get(d, {}).values())
+            return sum(counts.get(d, {}).get(s, 0) for s in ss)
+
+        current = val_for(new_date)
+
+        # WLS: exponential decay weights, most recent point has weight 1
+        origin_dt = datetime.strptime(recent_dates[0], "%m/%d/%Y")
+        pts = [((datetime.strptime(d, "%m/%d/%Y") - origin_dt).days, val_for(d))
+               for d in recent_dates]
+        last_x = pts[-1][0]
+        weights = [DECAY ** (last_x - x) for x, _ in pts]
+
+        n = len(pts)
+        if n >= 2:
+            W   = sum(weights)
+            Wx  = sum(w * x     for w, (x, _) in zip(weights, pts))
+            Wy  = sum(w * y     for w, (_, y) in zip(weights, pts))
+            Wxx = sum(w * x * x for w, (x, _) in zip(weights, pts))
+            Wxy = sum(w * x * y for w, (x, y) in zip(weights, pts))
+            denom = W * Wxx - Wx ** 2
+            if denom:
+                slope     = (W * Wxy - Wx * Wy) / denom
+                intercept = (Wy - slope * Wx) / W
+                trend = [max(0, round(intercept + slope * (last_x + h))) for h in HORIZONS]
+            else:
+                trend = [current] * len(HORIZONS)
+        else:
+            trend = [current] * len(HORIZONS)
+
+        result.append({"label": label, "color": color, "current": current,
+                        "trend": trend})
+    return result
+
+
+def compute_extremes(dates, counts):
+    """Return list of {label, color, current, recent, alltime} dicts using CHART_STATUS_GROUPS.
+
+    Each period value is (high_val, [high_dates], low_val, [low_dates]) or None.
+    High/low exclude zero-count dates for individual statuses; Total includes all.
+    """
+    most_recent_dt = datetime.strptime(dates[-1], "%m/%d/%Y")
+    cutoff = subtract_months(most_recent_dt, 12)
+    recent_dates = [d for d in dates if datetime.strptime(d, "%m/%d/%Y") >= cutoff]
+    new_date = dates[-1]
+
+    groups = list(CHART_STATUS_GROUPS) + [("Total", None, None)]
+
+    result = []
+    for label, source_statuses, color in groups:
+        def val_for(d):
+            if source_statuses is None:
+                return sum(counts.get(d, {}).values())
+            return sum(counts.get(d, {}).get(s, 0) for s in source_statuses)
+
+        current = val_for(new_date)
+        row = {"label": label, "color": color, "current": current}
+
+        for period_label, period_dates in (("recent", recent_dates), ("alltime", dates)):
+            pairs = [(val_for(d), d) for d in period_dates]
+            if source_statuses is not None:
+                pairs = [(v, d) for v, d in pairs if v > 0]
+            if not pairs:
+                row[period_label] = None
+            else:
+                vals = sorted(v for v, _ in pairs)
+                high_v = vals[-1]
+                low_v = vals[0]
+                med_v = median(vals)
+                row[period_label] = (
+                    high_v, [d for v, d in pairs if v == high_v],
+                    med_v,
+                    low_v, [d for v, d in pairs if v == low_v],
+                )
+        result.append(row)
+    return result
+
+
+def generate_stats_html(dates, counts, all_rows):
+    """Generate HTML for the statistics page (miplist-stats.html)."""
+    # Extremes table
+    extremes = compute_extremes(dates, counts)
+
+    def ext_cell(e):
+        if e is None:
+            return "<td class='no-data' colspan='3'>—</td>"
+        high_v, high_ds, med_v, low_v, low_ds = e
+        return (f"<td class='num'>{high_v:,}</td>"
+                f"<td class='num'>{med_v:,.1f}</td>"
+                f"<td class='num'>{low_v:,}</td>")
+
+    ext_rows = ""
+    for row in extremes:
+        label, color, current = row["label"], row["color"], row["current"]
+        swatch = f"<span class='swatch' style='background:{color}'></span>" if color else ""
+        sep = " class='sep-row'" if label == "Total" else ""
+        ext_rows += (
+            f"<tr{sep}><td>{swatch}{label}</td>"
+            f"<td class='num'>{current:,}</td>"
+            f"{ext_cell(row['recent'])}"
+            f"{ext_cell(row['alltime'])}</tr>"
+        )
+
+    ext_table = f"""<table>
+  <thead>
+    <tr>
+      <th rowspan='2'>Status</th>
+      <th rowspan='2'>Current</th>
+      <th colspan='3'>Last 12 Months</th>
+      <th colspan='3'>All Time</th>
+    </tr>
+    <tr>
+      <th>High</th><th>Median</th><th>Low</th>
+      <th>High</th><th>Median</th><th>Low</th>
+    </tr>
+  </thead>
+  <tbody>{ext_rows}</tbody>
+</table>"""
+
+    # Forecast table
+    forecasts = compute_forecasts(dates, counts)
+    fcast_rows = ""
+    for row in [r for r in forecasts if r["label"] != "Coordination"]:
+        label, color, current = row["label"], row["color"], row["current"]
+        swatch = f"<span class='swatch' style='background:{color}'></span>" if color else ""
+        sep = " class='sep-row'" if label == "Total" else ""
+        t1, t3 = row["trend"]
+
+        def delta_span(pred, cur=current):
+            d = pred - cur
+            if d > 0:
+                return f" (<span class='delta pos'>+{d}</span>)"
+            if d < 0:
+                return f" (<span class='delta neg'>{d}</span>)"
+            return ""
+
+        fcast_rows += (
+            f"<tr{sep}><td>{swatch}{label}</td>"
+            f"<td>{current:,}</td>"
+            f"<td>{t1:,}{delta_span(t1)}</td>"
+            f"<td>{t3:,}{delta_span(t3)}</td></tr>"
+        )
+
+    fcast_table = f"""<table>
+  <thead>
+    <tr>
+      <th>Status</th><th>Current</th>
+      <th>+1 Month</th><th>+3 Months</th>
+    </tr>
+  </thead>
+  <tbody>{fcast_rows}</tbody>
+</table>"""
+
+    # Chart (full timeline)
+    datasets = build_chart_data(dates, counts)
+    chart_datasets_json = json.dumps(datasets)
+    totals = [sum(counts.get(d, {}).values()) for d in dates]
+    y_max = max(totals) * 1.1 if totals else 100
+
+    # Today's summary panel
+    new_date = dates[-1]
+    day_counts = counts.get(new_date, {})
+    day_total = sum(day_counts.values())
+    summary_rows = "".join(
+        f"<tr><td><span class='swatch' style='background:{STATUS_COLORS.get(s, DEFAULT_COLOR)}'></span>{s}</td>"
+        f"<td class='sum-n'>{day_counts[s]:,}</td></tr>"
+        for s in ALL_STATUSES if day_counts.get(s, 0) > 0
+    )
+    summary_html = (
+        f"<div class='chart-summary'>"
+        f"<div class='sum-title'>Today's Summary</div>"
+        f"<div class='sum-date'>{new_date}</div>"
+        f"<table class='sum-table'><tbody>{summary_rows}"
+        f"<tr class='sum-total'><td>Total</td><td class='sum-n'>{day_total:,}</td></tr>"
+        f"</tbody></table></div>"
+    )
+
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NIST CMVP MIP Statistics</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+<style>
+  *, *::before, *::after {{ box-sizing: border-box; }}
+  body {{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0; padding: 24px 32px;
+    background: #f8f9fa; color: #212529;
+  }}
+  h1 {{ font-size: 1.6rem; margin: 0 0 4px; }}
+  .subtitle {{ color: #6c757d; font-size: 0.9rem; margin-bottom: 28px; }}
+  h2 {{ font-size: 1.2rem; margin: 32px 0 8px; border-bottom: 2px solid #dee2e6; padding-bottom: 6px; }}
+  .footer {{ color: #adb5bd; font-size: 0.78rem; margin-top: 28px; }}
+  .note {{ font-size: 0.82rem; color: #6c757d; margin-bottom: 10px; }}
+  .card {{ background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow-x: auto; margin-bottom: 8px; }}
+  table {{ border-collapse: collapse; width: 100%; font-size: 0.82rem; }}
+  th {{ background: #f1f3f5; text-align: left; padding: 6px 10px; font-weight: 600; border-bottom: 2px solid #dee2e6; white-space: nowrap; }}
+  th[colspan] {{ text-align: center; }}
+  td {{ padding: 5px 10px; border-bottom: 1px solid #f1f3f5; vertical-align: top; white-space: nowrap; }}
+  tr:last-child td {{ border-bottom: none; }}
+  tr:hover td {{ background: #f8f9fa; }}
+  td.no-data {{ color: #adb5bd; text-align: center; }}
+  td.num {{ text-align: center; font-variant-numeric: tabular-nums; }}
+  small {{ color: #6c757d; }}
+  tr.sep-row td {{ border-top: 2px solid #dee2e6; font-weight: 700; }}
+  .delta {{ font-size: 0.78rem; font-weight: 500; }}
+  .delta.pos {{ color: #2c7a2c; }}
+  .delta.neg {{ color: #c0392b; }}
+  .chart-row {{ display: flex; gap: 16px; align-items: stretch; }}
+  .chart-container {{ flex: 1; min-width: 0; background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }}
+  canvas {{ max-height: 420px; }}
+  .chart-summary {{
+    width: 250px; flex-shrink: 0;
+    background: #fff; border-radius: 8px; padding: 16px 28px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    display: flex; flex-direction: column; justify-content: center;
+  }}
+  .sum-title {{ font-size: 0.95rem; font-weight: 700; color: #212529; margin-bottom: 2px; text-align: center; }}
+  .sum-date {{ font-size: 0.8rem; color: #6c757d; margin-bottom: 12px; text-align: center; }}
+  .sum-table {{ border-collapse: collapse; width: 100%; font-size: 0.85rem; }}
+  .sum-table td {{ padding: 4px 6px; border: none; white-space: nowrap; }}
+  .sum-table tr:hover td {{ background: #f8f9fa; }}
+  .sum-n {{ text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }}
+  .sum-total td {{ border-top: 2px solid #dee2e6; font-weight: 700; padding-top: 6px; }}
+  .swatch {{ display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }}
+</style>
+</head>
+<body>
+<h1>NIST CMVP MIP Statistics</h1>
+<p class="subtitle"><a href="index.html">&larr; Back to report</a></p>
+
+<h2>Status Over Time (Full History)</h2>
+<div class="chart-row">
+  <div class="chart-container">
+    <canvas id="mipChart"></canvas>
+  </div>
+{summary_html}
+</div>
+
+<script>
+const ctx = document.getElementById('mipChart').getContext('2d');
+new Chart(ctx, {{
+  type: 'bar',
+  data: {{
+    datasets: {chart_datasets_json}
+  }},
+  options: {{
+    plugins: {{
+      legend: {{ position: 'top' }},
+      tooltip: {{
+        mode: 'index',
+        filter: (item) => item.parsed.y > 0,
+        callbacks: {{
+          title: (items) => items[0]?.label ?? '',
+          footer: (items) => {{
+            const total = items.reduce((s, i) => s + i.parsed.y, 0);
+            return 'Total: ' + total;
+          }}
+        }}
+      }}
+    }},
+    responsive: true,
+    barThickness: 6,
+    scales: {{
+      x: {{
+        type: 'time',
+        time: {{ unit: 'month', tooltipFormat: 'M/d/yyyy', displayFormats: {{ month: 'MMM yyyy' }} }},
+        stacked: true,
+        ticks: {{ maxRotation: 45, minRotation: 45, font: {{ size: 11 }} }}
+      }},
+      y: {{
+        stacked: true,
+        max: {y_max:.0f},
+        title: {{ display: true, text: 'Modules' }}
+      }}
+    }}
+  }}
+}});
+</script>
+
+<h2>Status Forecast</h2>
+<p class="note">+1 and +3 month projections using weighted least squares (exponential decay, half-life ≈ 23 days) on data from Mar 6 2026 onward. Deltas vs. current in parentheses.</p>
+<div class="card">
+{fcast_table}
+</div>
+
+<h2>Historical Highs and Lows</h2>
+<div class="card">
+{ext_table}
+</div>
+
+<p class="footer">Generated {generated_at}</p>
+</body>
+</html>
+"""
+
+
 def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=False, show_vendors=False):
     if chart_dates is None:
         chart_dates = dates
@@ -521,7 +924,7 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
   </div>
 </div>
 <h1>NIST CMVP Modules In Process</h1>
-<p class="subtitle">Source: <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CSRC</a> &mdash; {chart_note}</p>
+<p class="subtitle">Source: <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CSRC</a> &mdash; {chart_note} &mdash; <a href="miplist-stats.html">Statistics &rarr;</a></p>
 
 <h2>Status Over Time</h2>
 <div class="chart-row">
@@ -654,8 +1057,12 @@ def main():
 
     with open(args.output, "w") as f:
         f.write(html)
-
     print(f"Report written to {args.output} ({len(chart_dates)} of {len(dates)} publish dates charted)")
+
+    stats_html = generate_stats_html(dates, counts, all_rows)
+    with open(STATS_OUTPUT_FILE, "w") as f:
+        f.write(stats_html)
+    print(f"Stats written to {STATS_OUTPUT_FILE}")
 
 
 if __name__ == "__main__":
