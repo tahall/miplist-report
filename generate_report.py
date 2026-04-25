@@ -616,23 +616,23 @@ def generate_stats_html(dates, counts, all_rows):
         def delta_span(pred, cur=current):
             d = pred - cur
             if d > 0:
-                return f" (<span class='delta pos'>+{d}</span>)"
+                return f"<span class='dlt'><span class='delta pos'>(+{d})</span></span>"
             if d < 0:
-                return f" (<span class='delta neg'>{d}</span>)"
-            return ""
+                return f"<span class='dlt'><span class='delta neg'>({d})</span></span>"
+            return "<span class='dlt'></span>"
 
         fcast_rows += (
             f"<tr{sep}><td>{swatch}{label}</td>"
-            f"<td>{current:,}</td>"
-            f"<td>{t1:,}{delta_span(t1)}</td>"
-            f"<td>{t3:,}{delta_span(t3)}</td></tr>"
+            f"<td class='fnum'><span class='val'>{current:,}</span><span class='dlt'></span></td>"
+            f"<td class='fnum'><span class='val'>{t1:,}</span>{delta_span(t1)}</td>"
+            f"<td class='fnum'><span class='val'>{t3:,}</span>{delta_span(t3)}</td></tr>"
         )
 
     fcast_table = f"""<table>
   <thead>
     <tr>
-      <th>Status</th><th>Current</th>
-      <th>+1 Month</th><th>+3 Months</th>
+      <th>Status</th><th class='num'>Current</th>
+      <th class='num'>+1 Month</th><th class='num'>+3 Months</th>
     </tr>
   </thead>
   <tbody>{fcast_rows}</tbody>
@@ -701,6 +701,9 @@ def generate_stats_html(dates, counts, all_rows):
   .delta {{ font-size: 0.78rem; font-weight: 500; }}
   .delta.pos {{ color: #2c7a2c; }}
   .delta.neg {{ color: #c0392b; }}
+  td.fnum {{ text-align: center; }}
+  td.fnum span.val {{ display: inline-block; text-align: right; min-width: 5ch; font-variant-numeric: tabular-nums; }}
+  td.fnum span.dlt {{ display: inline-block; min-width: 7ch; text-align: left; }}
   .chart-row {{ display: flex; gap: 16px; align-items: stretch; }}
   .chart-container {{ flex: 1; min-width: 0; background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }}
   canvas {{ max-height: 420px; }}
@@ -713,7 +716,7 @@ def generate_stats_html(dates, counts, all_rows):
   .sum-title {{ font-size: 0.95rem; font-weight: 700; color: #212529; margin-bottom: 2px; text-align: center; }}
   .sum-date {{ font-size: 0.8rem; color: #6c757d; margin-bottom: 12px; text-align: center; }}
   .sum-table {{ border-collapse: collapse; width: 100%; font-size: 0.85rem; }}
-  .sum-table td {{ padding: 4px 6px; border: none; white-space: nowrap; }}
+  .sum-table td {{ padding: 4px 6px; border: none; white-space: normal; }}
   .sum-table tr:hover td {{ background: #f8f9fa; }}
   .sum-n {{ text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }}
   .sum-total td {{ border-top: 2px solid #dee2e6; font-weight: 700; padding-top: 6px; }}

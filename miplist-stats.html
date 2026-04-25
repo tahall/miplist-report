@@ -35,6 +35,9 @@
   .delta { font-size: 0.78rem; font-weight: 500; }
   .delta.pos { color: #2c7a2c; }
   .delta.neg { color: #c0392b; }
+  td.fnum { text-align: center; }
+  td.fnum span.val { display: inline-block; text-align: right; min-width: 5ch; font-variant-numeric: tabular-nums; }
+  td.fnum span.dlt { display: inline-block; min-width: 7ch; text-align: left; }
   .chart-row { display: flex; gap: 16px; align-items: stretch; }
   .chart-container { flex: 1; min-width: 0; background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
   canvas { max-height: 420px; }
@@ -47,7 +50,7 @@
   .sum-title { font-size: 0.95rem; font-weight: 700; color: #212529; margin-bottom: 2px; text-align: center; }
   .sum-date { font-size: 0.8rem; color: #6c757d; margin-bottom: 12px; text-align: center; }
   .sum-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
-  .sum-table td { padding: 4px 6px; border: none; white-space: nowrap; }
+  .sum-table td { padding: 4px 6px; border: none; white-space: normal; }
   .sum-table tr:hover td { background: #f8f9fa; }
   .sum-n { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
   .sum-total td { border-top: 2px solid #dee2e6; font-weight: 700; padding-top: 6px; }
@@ -113,11 +116,11 @@ new Chart(ctx, {
 <table>
   <thead>
     <tr>
-      <th>Status</th><th>Current</th>
-      <th>+1 Month</th><th>+3 Months</th>
+      <th>Status</th><th class='num'>Current</th>
+      <th class='num'>+1 Month</th><th class='num'>+3 Months</th>
     </tr>
   </thead>
-  <tbody><tr><td><span class='swatch' style='background:#4e79a7'></span>Review Pending / Pending Review</td><td>153</td><td>146 (<span class='delta neg'>-7</span>)</td><td>99 (<span class='delta neg'>-54</span>)</td></tr><tr><td><span class='swatch' style='background:#f28e2b'></span>In Review / Review</td><td>51</td><td>37 (<span class='delta neg'>-14</span>)</td><td>41 (<span class='delta neg'>-10</span>)</td></tr><tr><td><span class='swatch' style='background:#3a7d35'></span>Comment Resolution - CMVP</td><td>18</td><td>18</td><td>19 (<span class='delta pos'>+1</span>)</td></tr><tr><td><span class='swatch' style='background:#76c068'></span>Comment Resolution - Lab</td><td>78</td><td>99 (<span class='delta pos'>+21</span>)</td><td>147 (<span class='delta pos'>+69</span>)</td></tr><tr><td><span class='swatch' style='background:#e05c5c'></span>On Hold / Hold</td><td>0</td><td>0</td><td>0</td></tr><tr><td><span class='swatch' style='background:#c47d0e'></span>Cost Recovery</td><td>6</td><td>2 (<span class='delta neg'>-4</span>)</td><td>0 (<span class='delta neg'>-6</span>)</td></tr><tr><td><span class='swatch' style='background:#d4799a'></span>Pending Resubmission</td><td>23</td><td>24 (<span class='delta pos'>+1</span>)</td><td>17 (<span class='delta neg'>-6</span>)</td></tr><tr><td><span class='swatch' style='background:#9467bd'></span>Finalization</td><td>2</td><td>0 (<span class='delta neg'>-2</span>)</td><td>0 (<span class='delta neg'>-2</span>)</td></tr><tr><td><span class='swatch' style='background:#bab0ac'></span>Not Displayed</td><td>18</td><td>0 (<span class='delta neg'>-18</span>)</td><td>0 (<span class='delta neg'>-18</span>)</td></tr><tr class='sep-row'><td>Total</td><td>349</td><td>317 (<span class='delta neg'>-32</span>)</td><td>266 (<span class='delta neg'>-83</span>)</td></tr></tbody>
+  <tbody><tr><td><span class='swatch' style='background:#4e79a7'></span>Review Pending / Pending Review</td><td class='fnum'><span class='val'>153</span><span class='dlt'></span></td><td class='fnum'><span class='val'>146</span><span class='dlt'><span class='delta neg'>(-7)</span></span></td><td class='fnum'><span class='val'>99</span><span class='dlt'><span class='delta neg'>(-54)</span></span></td></tr><tr><td><span class='swatch' style='background:#f28e2b'></span>In Review / Review</td><td class='fnum'><span class='val'>51</span><span class='dlt'></span></td><td class='fnum'><span class='val'>37</span><span class='dlt'><span class='delta neg'>(-14)</span></span></td><td class='fnum'><span class='val'>41</span><span class='dlt'><span class='delta neg'>(-10)</span></span></td></tr><tr><td><span class='swatch' style='background:#3a7d35'></span>Comment Resolution - CMVP</td><td class='fnum'><span class='val'>18</span><span class='dlt'></span></td><td class='fnum'><span class='val'>18</span><span class='dlt'></span></td><td class='fnum'><span class='val'>19</span><span class='dlt'><span class='delta pos'>(+1)</span></span></td></tr><tr><td><span class='swatch' style='background:#76c068'></span>Comment Resolution - Lab</td><td class='fnum'><span class='val'>78</span><span class='dlt'></span></td><td class='fnum'><span class='val'>99</span><span class='dlt'><span class='delta pos'>(+21)</span></span></td><td class='fnum'><span class='val'>147</span><span class='dlt'><span class='delta pos'>(+69)</span></span></td></tr><tr><td><span class='swatch' style='background:#e05c5c'></span>On Hold / Hold</td><td class='fnum'><span class='val'>0</span><span class='dlt'></span></td><td class='fnum'><span class='val'>0</span><span class='dlt'></span></td><td class='fnum'><span class='val'>0</span><span class='dlt'></span></td></tr><tr><td><span class='swatch' style='background:#c47d0e'></span>Cost Recovery</td><td class='fnum'><span class='val'>6</span><span class='dlt'></span></td><td class='fnum'><span class='val'>2</span><span class='dlt'><span class='delta neg'>(-4)</span></span></td><td class='fnum'><span class='val'>0</span><span class='dlt'><span class='delta neg'>(-6)</span></span></td></tr><tr><td><span class='swatch' style='background:#d4799a'></span>Pending Resubmission</td><td class='fnum'><span class='val'>23</span><span class='dlt'></span></td><td class='fnum'><span class='val'>24</span><span class='dlt'><span class='delta pos'>(+1)</span></span></td><td class='fnum'><span class='val'>17</span><span class='dlt'><span class='delta neg'>(-6)</span></span></td></tr><tr><td><span class='swatch' style='background:#9467bd'></span>Finalization</td><td class='fnum'><span class='val'>2</span><span class='dlt'></span></td><td class='fnum'><span class='val'>0</span><span class='dlt'><span class='delta neg'>(-2)</span></span></td><td class='fnum'><span class='val'>0</span><span class='dlt'><span class='delta neg'>(-2)</span></span></td></tr><tr><td><span class='swatch' style='background:#bab0ac'></span>Not Displayed</td><td class='fnum'><span class='val'>18</span><span class='dlt'></span></td><td class='fnum'><span class='val'>0</span><span class='dlt'><span class='delta neg'>(-18)</span></span></td><td class='fnum'><span class='val'>0</span><span class='dlt'><span class='delta neg'>(-18)</span></span></td></tr><tr class='sep-row'><td>Total</td><td class='fnum'><span class='val'>349</span><span class='dlt'></span></td><td class='fnum'><span class='val'>317</span><span class='dlt'><span class='delta neg'>(-32)</span></span></td><td class='fnum'><span class='val'>266</span><span class='dlt'><span class='delta neg'>(-83)</span></span></td></tr></tbody>
 </table>
 </div>
 
@@ -140,6 +143,6 @@ new Chart(ctx, {
 </table>
 </div>
 
-<p class="footer">Generated 2026-04-25 15:14:10</p>
+<p class="footer">Generated 2026-04-25 16:51:26</p>
 </body>
 </html>
