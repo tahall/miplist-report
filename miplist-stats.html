@@ -110,6 +110,23 @@ new Chart(ctx, {
 });
 </script>
 
+<h2>Current Aging</h2>
+<p class="note">Days each module has been continuously in its current status as of 4/25/2026. "Not Displayed" modules are excluded (tracked as aggregate counts only).</p>
+<div class="card">
+<table>
+  <thead>
+    <tr>
+      <th>Status</th>
+      <th class='num'>Count</th>
+      <th class='num'>Median days</th>
+      <th class='num'>75th %ile</th>
+      <th class='num'>90th %ile</th>
+    </tr>
+  </thead>
+  <tbody><tr><td><span class='swatch' style='background:#4e79a7'></span>Review Pending / Pending Review</td><td class='num'><span>153</span></td><td class='num'><span>82</span></td><td class='num'><span>161</span></td><td class='num'><span>203</span></td></tr><tr><td><span class='swatch' style='background:#f28e2b'></span>In Review / Review</td><td class='num'><span>51</span></td><td class='num'><span>7</span></td><td class='num'><span>10</span></td><td class='num'><span>58</span></td></tr><tr><td><span class='swatch' style='background:#3a7d35'></span>Comment Resolution - CMVP</td><td class='num'><span>18</span></td><td class='num'><span>8</span></td><td class='num'><span>11</span></td><td class='num'><span>24</span></td></tr><tr><td><span class='swatch' style='background:#76c068'></span>Comment Resolution - Lab</td><td class='num'><span>78</span></td><td class='num'><span>20</span></td><td class='num'><span>51</span></td><td class='num'><span>51</span></td></tr><tr><td><span class='swatch' style='background:#c47d0e'></span>Cost Recovery</td><td class='num'><span>6</span></td><td class='num'><span>10</span></td><td class='num'><span>13</span></td><td class='num'><span>20</span></td></tr><tr><td><span class='swatch' style='background:#d4799a'></span>Pending Resubmission</td><td class='num'><span>23</span></td><td class='num'><span>24</span></td><td class='num'><span>50</span></td><td class='num'><span>50</span></td></tr><tr><td><span class='swatch' style='background:#9467bd'></span>Finalization</td><td class='num'><span>2</span></td><td class='num'><span>0</span></td><td class='num'><span>0</span></td><td class='num'><span>0</span></td></tr></tbody>
+</table>
+</div>
+
 <h2>Status Forecast</h2>
 <p class="note">+1 and +3 month projections using weighted least squares (exponential decay, half-life ≈ 23 days) on data from Mar 6 2026 onward. Deltas vs. current in parentheses.</p>
 <div class="card">
@@ -143,6 +160,6 @@ new Chart(ctx, {
 </table>
 </div>
 
-<p class="footer">Generated 2026-04-25 16:51:26</p>
+<p class="footer">Generated 2026-04-25 17:20:34</p>
 </body>
 </html>

@@ -285,7 +285,9 @@ def compute_module_stats(all_rows, dates):
     history = {}
     for pub_date, module_name, vendor_name, standard, status in all_rows:
         key = (module_name, vendor_name, standard)
-        history.setdefault(key, []).append((pub_date, normalize_status(status)))
+        norm = normalize_status(status)
+        mapped = LEGACY_STATUS_MAP.get(norm, norm)
+        history.setdefault(key, []).append((pub_date, mapped))
 
     for key in history:
         history[key].sort(key=lambda x: date_dt.get(x[0], datetime.min))
@@ -562,6 +564,53 @@ def compute_extremes(dates, counts):
     return result
 
 
+def compute_aging(all_rows, dates, status_since):
+    """Return list of {label, color, count, median, p75, p90, max} for current modules.
+
+    Groups statuses by CHART_STATUS_GROUPS. Not Displayed modules are excluded
+    (they are tracked as aggregate counts only, not individual records).
+    """
+    new_date = dates[-1]
+    new_dt = datetime.strptime(new_date, "%m/%d/%Y")
+
+    status_to_group = {}
+    for label, source_statuses, color in CHART_STATUS_GROUPS:
+        if source_statuses:
+            for s in source_statuses:
+                status_to_group[s] = (label, color)
+
+    group_days = {}
+    for pub_date, mn, vn, std, status in all_rows:
+        if pub_date != new_date:
+            continue
+        norm = normalize_status(status)
+        key = (mn, vn, std)
+        since_dt = status_since.get(key)
+        if since_dt is None:
+            continue
+        days = (new_dt - since_dt).days
+        group_label, color = status_to_group.get(norm, (norm, DEFAULT_COLOR))
+        group_days.setdefault(group_label, {"days": [], "color": color})["days"].append(days)
+
+    def pct(sorted_vals, p):
+        idx = (len(sorted_vals) - 1) * p / 100
+        lo = int(idx)
+        hi = min(lo + 1, len(sorted_vals) - 1)
+        return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (idx - lo)
+
+    result = []
+    for label, source_statuses, color in CHART_STATUS_GROUPS:
+        if label not in group_days:
+            continue
+        days = sorted(group_days[label]["days"])
+        result.append({
+            "label": label, "color": color, "count": len(days),
+            "median": pct(days, 50), "p75": pct(days, 75),
+            "p90": pct(days, 90), "max": days[-1],
+        })
+    return result
+
+
 def generate_stats_html(dates, counts, all_rows):
     """Generate HTML for the statistics page (miplist-stats.html)."""
     # Extremes table
@@ -602,6 +651,32 @@ def generate_stats_html(dates, counts, all_rows):
     </tr>
   </thead>
   <tbody>{ext_rows}</tbody>
+</table>"""
+
+    # Aging analysis table
+    status_since = compute_module_stats(all_rows, dates)
+    aging = compute_aging(all_rows, dates, status_since)
+    aging_rows = ""
+    for row in aging:
+        swatch = f"<span class='swatch' style='background:{row['color']}'></span>"
+        aging_rows += (
+            f"<tr><td>{swatch}{row['label']}</td>"
+            f"<td class='num'><span>{row['count']:,}</span></td>"
+            f"<td class='num'><span>{round(row['median'])}</span></td>"
+            f"<td class='num'><span>{round(row['p75'])}</span></td>"
+            f"<td class='num'><span>{round(row['p90'])}</span></td></tr>"
+        )
+    aging_table = f"""<table>
+  <thead>
+    <tr>
+      <th>Status</th>
+      <th class='num'>Count</th>
+      <th class='num'>Median days</th>
+      <th class='num'>75th %ile</th>
+      <th class='num'>90th %ile</th>
+    </tr>
+  </thead>
+  <tbody>{aging_rows}</tbody>
 </table>"""
 
     # Forecast table
@@ -775,6 +850,12 @@ new Chart(ctx, {{
   }}
 }});
 </script>
+
+<h2>Current Aging</h2>
+<p class="note">Days each module has been continuously in its current status as of {new_date}. "Not Displayed" modules are excluded (tracked as aggregate counts only).</p>
+<div class="card">
+{aging_table}
+</div>
 
 <h2>Status Forecast</h2>
 <p class="note">+1 and +3 month projections using weighted least squares (exponential decay, half-life ≈ 23 days) on data from Mar 6 2026 onward. Deltas vs. current in parentheses.</p>
