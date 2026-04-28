@@ -70,6 +70,17 @@ LEGACY_STATUS_MAP = {
     "On Hold":        "Hold",
 }
 
+# Pipeline stage order for state machine validation (higher = further along).
+# Statuses not listed (Hold, Pending Resubmission) are treated as stage -1 (special/off-path).
+STATUS_STAGE = {
+    "Cost Recovery":             0,
+    "Pending Review":            1, "Review Pending":  1,
+    "Review":                    2, "In Review":       2,
+    "Comment Resolution - Lab":  3,
+    "Comment Resolution - CMVP": 4, "Coordination":   4,
+    "Finalization":              5,
+}
+
 # Ordered list of statuses to show in the stats page duration table
 STATS_STATUSES = [
     "Pending Review", "Review", "Coordination",
@@ -147,11 +158,31 @@ def compute_changes(dates, all_rows):
     old = rows_for(prev_date)
     new = rows_for(new_date)
 
-    added = sorted([(k, new[k]) for k in new if k not in old])
-    removed = sorted([(k, old[k]) for k in old if k not in new])
-    changed = sorted([(k, old[k], new[k]) for k in new if k in old and normalize_status(new[k]) != normalize_status(old[k])])
+    added = list(sorted([(k, new[k]) for k in new if k not in old]))
+    removed = list(sorted([(k, old[k]) for k in old if k not in new]))
+    raw_changed = [(k, old[k], new[k]) for k in new if k in old and normalize_status(new[k]) != normalize_status(old[k])]
 
-    return prev_date, new_date, added, removed, changed
+    # Reclassify transitions that violate the state machine as removals + additions.
+    # A module going from an advanced stage (Review or later) back to the beginning
+    # (Pending Review / Cost Recovery) without passing through Pending Resubmission
+    # almost certainly means the original module completed and a new submission appeared.
+    def stage(raw):
+        return STATUS_STAGE.get(LEGACY_STATUS_MAP.get(normalize_status(raw), normalize_status(raw)), -1)
+
+    reclassified = set()
+    changed = []
+    for k, old_raw, new_raw in raw_changed:
+        if stage(old_raw) >= 2 and 0 <= stage(new_raw) <= 1:
+            removed.append((k, old_raw))
+            added.append((k, new_raw))
+            reclassified.add(k)
+        else:
+            changed.append((k, old_raw, new_raw))
+    added.sort()
+    removed.sort()
+    changed.sort()
+
+    return prev_date, new_date, added, removed, changed, reclassified
 
 
 def build_chart_data(dates, counts):
@@ -164,6 +195,35 @@ def build_chart_data(dates, counts):
         ]
         datasets.append({"label": label, "data": data, "backgroundColor": color})
     return datasets
+
+
+def _split_into_submissions(entries, date_idx):
+    """Split a date-sorted list of (date_str, status, ...) entries into separate submissions.
+
+    Splits occur at:
+    - Date gaps: module absent from one or more scrape dates between consecutive entries.
+    - Invalid state machine transitions: stage-2+ going to stage 0-1 (e.g. Finalization →
+      Pending Review) with no date gap indicates the original module completed and a new
+      submission reused the same key.
+    Stage -1 (Pending Resubmission, Hold) is intentionally excluded from the destination
+    check so that valid backward moves like Review → Pending Resubmission are not split.
+    """
+    if not entries:
+        return []
+
+    def _stage(entry):
+        s = LEGACY_STATUS_MAP.get(entry[1], entry[1])
+        return STATUS_STAGE.get(s, -1)
+
+    segments = [[entries[0]]]
+    for i in range(1, len(entries)):
+        prev, curr = entries[i - 1], entries[i]
+        date_gap = date_idx[curr[0]] - date_idx[prev[0]] > 1
+        invalid_transition = _stage(prev) >= 2 and 0 <= _stage(curr) <= 1
+        if date_gap or invalid_transition:
+            segments.append([])
+        segments[-1].append(curr)
+    return segments
 
 
 def compute_status_durations(all_rows, dates):
@@ -181,26 +241,31 @@ def compute_status_durations(all_rows, dates):
     def quarter_str(dt):
         return f"Q{(dt.month - 1) // 3 + 1} {dt.year}"
 
+    sorted_dates = sorted(dates, key=lambda d: date_dt[d])
+    date_idx = {d: i for i, d in enumerate(sorted_dates)}
+
     history = {}
     for pub_date, mn, vn, std, status in all_rows:
         key = (mn, vn, std)
-        history.setdefault(key, []).append((date_dt[pub_date], norm(status)))
+        history.setdefault(key, []).append((pub_date, norm(status)))
     for key in history:
-        history[key].sort()
+        history[key].sort(key=lambda x: date_dt[x[0]])
 
     result = {}
     for entries in history.values():
-        runs = []
-        for dt, status in entries:
-            if runs and runs[-1][2] == status:
-                runs[-1][1] = dt
-            else:
-                runs.append([dt, dt, status])
-        for i in range(len(runs) - 1):
-            days = (runs[i + 1][0] - runs[i][0]).days
-            status = runs[i][2]
-            q = quarter_str(runs[i + 1][0])
-            result.setdefault(q, {}).setdefault(status, []).append(days)
+        for segment in _split_into_submissions(entries, date_idx):
+            runs = []
+            for pub_date, status in segment:
+                dt = date_dt[pub_date]
+                if runs and runs[-1][2] == status:
+                    runs[-1][1] = dt
+                else:
+                    runs.append([dt, dt, status])
+            for i in range(len(runs) - 1):
+                days = (runs[i + 1][0] - runs[i][0]).days
+                status = runs[i][2]
+                q = quarter_str(runs[i + 1][0])
+                result.setdefault(q, {}).setdefault(status, []).append(days)
 
     return result
 
@@ -278,9 +343,13 @@ def vendor_breakdown_html(all_rows, new_date):
 def compute_module_stats(all_rows, dates):
     """Return status_since dict keyed by (module_name, vendor_name, standard).
 
-    status_since: earliest publish_date of the current unbroken normalized-status run (as datetime)
+    status_since: earliest publish_date of the current unbroken normalized-status run (as datetime).
+    Only the most recent contiguous presence on the MIP list is considered so that a
+    resubmission with the same key does not inherit the prior submission's age.
     """
     date_dt = {d: datetime.strptime(d, "%m/%d/%Y") for d in dates}
+    sorted_dates = sorted(dates, key=lambda d: date_dt[d])
+    date_idx = {d: i for i, d in enumerate(sorted_dates)}
 
     history = {}
     for pub_date, module_name, vendor_name, standard, status in all_rows:
@@ -294,9 +363,10 @@ def compute_module_stats(all_rows, dates):
 
     status_since = {}
     for key, entries in history.items():
-        current_status = entries[-1][1]
-        run_start = entries[-1][0]
-        for pub_date, norm_status in reversed(entries[:-1]):
+        last_segment = _split_into_submissions(entries, date_idx)[-1]
+        current_status = last_segment[-1][1]
+        run_start = last_segment[-1][0]
+        for pub_date, norm_status in reversed(last_segment[:-1]):
             if norm_status == current_status:
                 run_start = pub_date
             else:
@@ -307,12 +377,16 @@ def compute_module_stats(all_rows, dates):
 
 
 def build_module_histories(all_rows, dates, keys):
-    """Return {key_str: [{date, status, status_date}, ...]} for the given module keys, sorted chronologically.
+    """Return {key_str: [{date, status, status_date}, ...]} for the given module keys.
 
+    Only the most recent contiguous presence on the MIP list is returned so that a
+    resubmission with the same key does not show the prior submission's history.
     status_date is the date embedded in the raw status string (e.g. '9/2/2025' from
     'Review Pending (9/2/2025)'), representing when the module entered that status.
     """
     date_dt = {d: datetime.strptime(d, "%m/%d/%Y") for d in dates}
+    sorted_dates = sorted(dates, key=lambda d: date_dt[d])
+    date_idx = {d: i for i, d in enumerate(sorted_dates)}
     key_set = set(keys)
     raw = {}
     status_date_re = re.compile(r'\((\d{1,2}/\d{1,2}/\d{4})\)')
@@ -323,11 +397,15 @@ def build_module_histories(all_rows, dates, keys):
             m = status_date_re.search(status)
             status_date = m.group(1) if m else None
             raw.setdefault(k_str, []).append((pub_date, normalize_status(status), status_date))
-    return {
-        k: [{"date": d, "status": s, "status_date": sd}
-            for d, s, sd in sorted(v, key=lambda x: date_dt.get(x[0], datetime.min))]
-        for k, v in raw.items()
-    }
+    result = {}
+    for k_str, entries in raw.items():
+        sorted_entries = sorted(entries, key=lambda x: date_dt.get(x[0], datetime.min))
+        segments = _split_into_submissions(sorted_entries, date_idx)
+        result[k_str] = [{"date": d, "status": s, "status_date": sd} for d, s, sd in segments[-1]]
+        if len(segments) >= 2:
+            # Store the previous submission so the "Removed" popup can show the right history.
+            result[k_str + "||prev"] = [{"date": d, "status": s, "status_date": sd} for d, s, sd in segments[-2]]
+    return result
 
 
 def _key_attr(mn, vn, std):
@@ -418,7 +496,7 @@ def disappearances_html(all_rows, dates):
     return html, len(disappeared)
 
 
-def changes_html(prev_date, new_date, added, removed, changed):
+def changes_html(prev_date, new_date, added, removed, changed, reclassified=None):
     if prev_date is None:
         return "<p>Not enough data for change comparison.</p>"
 
@@ -452,7 +530,13 @@ def changes_html(prev_date, new_date, added, removed, changed):
 
     def removed_row(item):
         k, status = item
-        return f"<td class='module-name' data-key='{_key_attr(*k)}'>{k[0]}</td><td>{k[1]}</td><td>{k[2]}</td><td>{status}</td>"
+        # Reclassified keys share the same (name, vendor, standard) with an "Added" entry.
+        # Use the "||prev" key so the popup shows the old submission's history, not the new one.
+        if reclassified and k in reclassified:
+            ka = html_mod.escape(f"{k[0]}||{k[1]}||{k[2]}||prev", quote=True)
+        else:
+            ka = _key_attr(*k)
+        return f"<td class='module-name' data-key='{ka}'>{k[0]}</td><td>{k[1]}</td><td>{k[2]}</td><td>{status}</td>"
 
     def changed_row(item):
         k, old_s, new_s = item
@@ -886,7 +970,7 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
     if chart_dates is None:
         chart_dates = dates
 
-    prev_date, new_date, added, removed, changed = compute_changes(dates, all_rows)
+    prev_date, new_date, added, removed, changed, reclassified = compute_changes(dates, all_rows)
     datasets = build_chart_data(chart_dates, counts)
 
     chart_datasets = json.dumps(datasets)
@@ -929,7 +1013,7 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
         f"</tbody></table></div>"
     )
 
-    changes_section = changes_html(prev_date, new_date, added, removed, changed)
+    changes_section = changes_html(prev_date, new_date, added, removed, changed, reclassified)
     changes_title = f"Changes: {prev_date} → {new_date}" if prev_date else "Changes"
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

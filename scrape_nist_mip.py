@@ -6,6 +6,7 @@ import os
 import re
 import requests
 import subprocess
+import time
 from bs4 import BeautifulSoup
 import sqlite3
 import sys
@@ -199,7 +200,7 @@ def fetch_wayback_snapshots(from_date, to_date=None, verbose=False):
     return snapshots
 
 
-def scrape_from_wayback(from_date_str, to_date_str=None, verbose=False, dry_run=False):
+def scrape_from_wayback(from_date_str, to_date_str=None, verbose=False, dry_run=False, delay=2.0):
     """Fetch and process archived versions of the NIST MIP page."""
     from_date = parse_date_arg(from_date_str, label="from-date", verbose=verbose)
     to_date = parse_date_arg(to_date_str, label="to-date", verbose=verbose) if to_date_str else None
@@ -215,6 +216,9 @@ def scrape_from_wayback(from_date_str, to_date_str=None, verbose=False, dry_run=
 
     for i, timestamp in enumerate(snapshots):
         wayback_url = f"https://web.archive.org/web/{timestamp}/{NIST_URL}"
+
+        if i > 0:
+            time.sleep(delay)
 
         if verbose:
             print(f"  [{i+1}/{len(snapshots)}] Fetching {wayback_url}")
@@ -409,6 +413,7 @@ if __name__ == "__main__":
     parser.add_argument("--backfill", action="store_true", help="Fill gaps in DB via Wayback Machine, starting from the earliest date already in the DB")
     parser.add_argument("-v", "--verbose", action="store_true", help="Print detailed progress information")
     parser.add_argument("--dry-run", dest="dry_run", action="store_true", help="Show what would be saved without writing to the database")
+    parser.add_argument("--delay", type=float, default=2.0, metavar="SECONDS", help="Seconds to wait between Wayback Machine requests (default: 2.0)")
     parser.add_argument("--csv", nargs="?", const="nist_modules_in_process.csv", metavar="FILENAME",
                         help="Export all DB data to CSV (default: nist_modules_in_process.csv)")
     parser.add_argument("--csv-history", dest="csv_history", nargs="?", const="nist_module_history.csv", metavar="FILENAME",
@@ -446,8 +451,8 @@ if __name__ == "__main__":
             if existing else "1/1/2023"
         )
         print(f"Backfilling from {from_date}...")
-        scrape_from_wayback(from_date, verbose=args.verbose, dry_run=args.dry_run)
+        scrape_from_wayback(from_date, verbose=args.verbose, dry_run=args.dry_run, delay=args.delay)
     elif args.from_date:
-        scrape_from_wayback(args.from_date, to_date_str=args.to_date, verbose=args.verbose, dry_run=args.dry_run)
+        scrape_from_wayback(args.from_date, to_date_str=args.to_date, verbose=args.verbose, dry_run=args.dry_run, delay=args.delay)
     else:
         scrape_modules_in_process(verbose=args.verbose, dry_run=args.dry_run)
