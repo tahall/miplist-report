@@ -103,6 +103,15 @@ def normalize_status(raw):
     return raw.split("(")[0].strip()
 
 
+def normalize_vendor(raw):
+    """Normalize vendor name for key construction, collapsing pipe-separator spacing variants.
+
+    NIST's site sometimes renders 'Codan | DTC' as 'Codan DTC' (dropping the pipe) for
+    Pending Resubmission entries. Normalizing ensures both forms map to the same key.
+    """
+    return re.sub(r'\s*\|\s*', ' ', raw).strip()
+
+
 def load_data():
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
@@ -150,32 +159,60 @@ def compute_changes(dates, all_rows):
     prev_date = dates[-2]
 
     def rows_for(date):
-        return {
-            (r[1], r[2], r[3]): r[4].strip()
-            for r in all_rows if r[0] == date
-        }
+        result = {}
+        for r in all_rows:
+            if r[0] == date:
+                key = (r[1], normalize_vendor(r[2]), r[3])
+                result.setdefault(key, Counter())[r[4].strip()] += 1
+        return result
 
     old = rows_for(prev_date)
     new = rows_for(new_date)
 
-    added = list(sorted([(k, new[k]) for k in new if k not in old]))
-    removed = list(sorted([(k, old[k]) for k in old if k not in new]))
-    raw_changed = [(k, old[k], new[k]) for k in new if k in old and normalize_status(new[k]) != normalize_status(old[k])]
+    def stage(raw):
+        return STATUS_STAGE.get(LEGACY_STATUS_MAP.get(normalize_status(raw), normalize_status(raw)), -1)
+
+    added = []
+    removed = []
+    raw_changed = []
+
+    for k in sorted(set(old) | set(new)):
+        old_c = old.get(k, Counter())
+        new_c = new.get(k, Counter())
+        common = old_c & new_c          # multiset intersection: min count for each status string
+        old_only = old_c - common       # entries that disappeared
+        new_only = new_c - common       # entries that appeared
+
+        # Expand to sorted lists (duplicates preserved via count)
+        old_list = sorted(s for s, cnt in old_only.items() for _ in range(cnt))
+        new_list = sorted(s for s, cnt in new_only.items() for _ in range(cnt))
+
+        n_paired = min(len(old_list), len(new_list))
+
+        # Pair old/new entries as potential status changes; excess are pure adds/removes
+        for i in range(n_paired):
+            old_raw, new_raw = old_list[i], new_list[i]
+            if normalize_status(old_raw) != normalize_status(new_raw):
+                raw_changed.append((k, old_raw, new_raw))
+            # same normalized status but different status date → silent (NIST date correction)
+
+        for s in old_list[n_paired:]:
+            removed.append((k, s))
+        for s in new_list[n_paired:]:
+            added.append((k, s))
 
     # Reclassify transitions that violate the state machine as removals + additions.
     # A module going from an advanced stage (Review or later) back to the beginning
     # (Pending Review / Cost Recovery) without passing through Pending Resubmission
     # almost certainly means the original module completed and a new submission appeared.
-    def stage(raw):
-        return STATUS_STAGE.get(LEGACY_STATUS_MAP.get(normalize_status(raw), normalize_status(raw)), -1)
-
+    # reclassified is keyed by (module_key, old_status_raw) to handle multiple entries per key.
     reclassified = set()
     changed = []
     for k, old_raw, new_raw in raw_changed:
         if stage(old_raw) >= 2 and 0 <= stage(new_raw) <= 1:
             removed.append((k, old_raw))
             added.append((k, new_raw))
-            reclassified.add(k)
+            reclassified.add((k, old_raw))
         else:
             changed.append((k, old_raw, new_raw))
     added.sort()
@@ -246,7 +283,7 @@ def compute_status_durations(all_rows, dates):
 
     history = {}
     for pub_date, mn, vn, std, status in all_rows:
-        key = (mn, vn, std)
+        key = (mn, normalize_vendor(vn), std)
         history.setdefault(key, []).append((pub_date, norm(status)))
     for key in history:
         history[key].sort(key=lambda x: date_dt[x[0]])
@@ -353,7 +390,7 @@ def compute_module_stats(all_rows, dates):
 
     history = {}
     for pub_date, module_name, vendor_name, standard, status in all_rows:
-        key = (module_name, vendor_name, standard)
+        key = (module_name, normalize_vendor(vendor_name), standard)
         norm = normalize_status(status)
         mapped = LEGACY_STATUS_MAP.get(norm, norm)
         history.setdefault(key, []).append((pub_date, mapped))
@@ -391,9 +428,10 @@ def build_module_histories(all_rows, dates, keys):
     raw = {}
     status_date_re = re.compile(r'\((\d{1,2}/\d{1,2}/\d{4})\)')
     for pub_date, mn, vn, std, status in all_rows:
-        key = (mn, vn, std)
+        nvn = normalize_vendor(vn)
+        key = (mn, nvn, std)
         if key in key_set:
-            k_str = f"{mn}||{vn}||{std}"
+            k_str = f"{mn}||{nvn}||{std}"
             m = status_date_re.search(status)
             status_date = m.group(1) if m else None
             raw.setdefault(k_str, []).append((pub_date, normalize_status(status), status_date))
@@ -417,7 +455,7 @@ def finalization_html(all_rows, new_date, status_since=None, validated=None):
     """Return (html, count) for modules in Finalization as of new_date, sorted by days in status desc."""
     target = {"Finalization"}
     new_dt = datetime.strptime(new_date, "%m/%d/%Y")
-    rows = [(r[1], r[2], r[3], r[4]) for r in all_rows
+    rows = [(r[1], normalize_vendor(r[2]), r[3], r[4]) for r in all_rows
             if r[0] == new_date and normalize_status(r[4]) in target]
     if not rows:
         return "<p>No modules currently in Finalization.</p>", 0
@@ -467,7 +505,7 @@ def disappearances_html(all_rows, dates):
 
     last_status = {}  # key -> (last_publish_date, normalized_status)
     for pub_date, module_name, vendor_name, standard, status in all_rows:
-        key = (module_name, vendor_name, standard)
+        key = (module_name, normalize_vendor(vendor_name), standard)
         if key not in last_status or date_dt[pub_date] > date_dt[last_status[key][0]]:
             last_status[key] = (pub_date, normalize_status(status))
 
@@ -530,9 +568,9 @@ def changes_html(prev_date, new_date, added, removed, changed, reclassified=None
 
     def removed_row(item):
         k, status = item
-        # Reclassified keys share the same (name, vendor, standard) with an "Added" entry.
+        # Reclassified entries share the same (name, vendor, standard) with an "Added" entry.
         # Use the "||prev" key so the popup shows the old submission's history, not the new one.
-        if reclassified and k in reclassified:
+        if reclassified and (k, status) in reclassified:
             ka = html_mod.escape(f"{k[0]}||{k[1]}||{k[2]}||prev", quote=True)
         else:
             ka = _key_attr(*k)
@@ -675,7 +713,7 @@ def compute_aging(all_rows, dates, status_since):
         if pub_date != new_date:
             continue
         norm = normalize_status(status)
-        key = (mn, vn, std)
+        key = (mn, normalize_vendor(vn), std)
         since_dt = status_since.get(key)
         if since_dt is None:
             continue
@@ -987,8 +1025,9 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
     # Build module histories for all modules visible in the report
     history_keys = (
         {k for k, _ in added} | {k for k, _ in removed} | {k for k, _, _ in changed}
-        | {(r[1], r[2], r[3]) for r in all_rows if r[0] == new_date and normalize_status(r[4]) == "Finalization"}
+        | {(r[1], normalize_vendor(r[2]), r[3]) for r in all_rows if r[0] == new_date and normalize_status(r[4]) == "Finalization"}
     )
+
     histories_json = json.dumps(build_module_histories(all_rows, dates, history_keys))
 
     vendor_section = (
