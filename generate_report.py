@@ -766,13 +766,14 @@ def generate_stats_html(dates, counts, all_rows):
             f"{ext_cell(row['alltime'], divider=True)}</tr>"
         )
 
+    earliest_str = datetime.strptime(dates[0], "%m/%d/%Y").strftime("%-d %b %Y")
     ext_table = f"""<table>
   <thead>
     <tr>
       <th rowspan='2'>Status</th>
       <th class='num' rowspan='2'>Current</th>
       <th colspan='3' class='divider'>Last 12 Months</th>
-      <th colspan='3' class='divider'>All Time</th>
+      <th colspan='3' class='divider'>Since {earliest_str}</th>
     </tr>
     <tr>
       <th class='num divider'>High</th><th class='num'>Median</th><th class='num'>Low</th>
