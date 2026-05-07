@@ -163,19 +163,45 @@ new Chart(ctx, {
 <h2>Time in Queue to Certificate</h2>
 <p class="note">Median calendar days from first appearance in Pending Review/Review Pending to last appearance in the MIP list, for modules that completed the full progression (PR/RP → IR/R → Coordination/Comment Resolution → certificate issued) with a unique module name. FIPS 140-2 modules exit at Coordination; FIPS 140-3 modules may exit at Coordination/CR or Finalization. Grouped by approximate month of certificate issuance.</p>
 <div class="card">
-<table>
-  <thead>
-    <tr>
-      <th>Month</th>
-      <th class='num'>Median days</th>
-      <th class='num'>Modules</th>
-    </tr>
-  </thead>
-  <tbody><tr><td>May 2026</td><td class='num'><span>369</span></td><td class='num'><span>1</span></td></tr><tr><td>Apr 2026</td><td class='num'><span>337</span></td><td class='num'><span>10</span></td></tr><tr><td>Mar 2026</td><td class='num'><span>328</span></td><td class='num'><span>14</span></td></tr><tr><td>Feb 2026</td><td class='num'><span>586</span></td><td class='num'><span>2</span></td></tr><tr><td>Jan 2026</td><td class='num'><span>383</span></td><td class='num'><span>12</span></td></tr><tr><td>Dec 2025</td><td class='num'><span>451</span></td><td class='num'><span>3</span></td></tr><tr><td>Nov 2025</td><td class='num'><span>425</span></td><td class='num'><span>7</span></td></tr><tr><td>Oct 2025</td><td class='num'><span>422</span></td><td class='num'><span>1</span></td></tr><tr><td>Sep 2025</td><td class='num'><span>398</span></td><td class='num'><span>6</span></td></tr><tr><td>Aug 2025</td><td class='num'><span>384</span></td><td class='num'><span>4</span></td></tr><tr><td>Jul 2025</td><td class='num'><span>411</span></td><td class='num'><span>2</span></td></tr><tr><td>Jun 2025</td><td class='num'><span>432</span></td><td class='num'><span>5</span></td></tr><tr><td>May 2025</td><td class='num'><span>471</span></td><td class='num'><span>7</span></td></tr><tr><td>Apr 2025</td><td class='num'><span>529</span></td><td class='num'><span>5</span></td></tr><tr><td>Mar 2025</td><td class='num'><span>545</span></td><td class='num'><span>2</span></td></tr><tr><td>Feb 2025</td><td class='num'><span>382</span></td><td class='num'><span>5</span></td></tr><tr><td>Jan 2025</td><td class='num'><span>626</span></td><td class='num'><span>3</span></td></tr><tr><td>Dec 2024</td><td class='num'><span>354</span></td><td class='num'><span>3</span></td></tr><tr><td>Nov 2024</td><td class='num'><span>711</span></td><td class='num'><span>3</span></td></tr><tr><td>Oct 2024</td><td class='num'><span>742</span></td><td class='num'><span>4</span></td></tr><tr><td>Sep 2024</td><td class='num'><span>719</span></td><td class='num'><span>7</span></td></tr><tr><td>Aug 2024</td><td class='num'><span>552</span></td><td class='num'><span>1</span></td></tr><tr><td>Jul 2024</td><td class='num'><span>586</span></td><td class='num'><span>4</span></td></tr><tr><td>Jun 2024</td><td class='num'><span>760</span></td><td class='num'><span>7</span></td></tr></tbody>
-</table>
+  <canvas id="queueChart" style="max-height:320px"></canvas>
 </div>
+<script>
+new Chart(document.getElementById('queueChart').getContext('2d'), {
+  type: 'bar',
+  data: {
+    labels: ["Jun 2024", "Jul 2024", "Aug 2024", "Sep 2024", "Oct 2024", "Nov 2024", "Dec 2024", "Jan 2025", "Feb 2025", "Mar 2025", "Apr 2025", "May 2025", "Jun 2025", "Jul 2025", "Aug 2025", "Sep 2025", "Oct 2025", "Nov 2025", "Dec 2025", "Jan 2026", "Feb 2026", "Mar 2026", "Apr 2026", "May 2026"],
+    datasets: [{
+      label: 'Median days in queue',
+      data: [760, 586, 552, 719, 742, 711, 354, 626, 382, 545, 529, 471, 432, 411, 384, 398, 422, 425, 451, 383, 586, 328, 337, 369],
+      backgroundColor: '#4e79a7',
+      borderRadius: 3,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          afterBody: (items) => {
+            const counts = [7, 4, 1, 7, 4, 3, 3, 3, 5, 2, 5, 7, 5, 2, 4, 6, 1, 7, 3, 12, 2, 14, 10, 1];
+            return 'Modules: ' + counts[items[0].dataIndex];
+          }
+        }
+      }
+    },
+    scales: {
+      x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 11 } } },
+      y: {
+        beginAtZero: true,
+        title: { display: true, text: 'Median days in queue' }
+      }
+    }
+  }
+});
+</script>
 
-<p class="footer">Generated 2026-05-07 09:06:39</p>
+<p class="footer">Generated 2026-05-07 09:30:26</p>
 <p class="footer">This is an unofficial tool and is not affiliated with or endorsed by NIST or the Internet Archive. Data is scraped from the <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CMVP Modules In Process list</a>; historical data is sourced from the <a href="https://web.archive.org" target="_blank">Wayback Machine</a>. This data may not be complete or accurate. Always refer to the official NIST source for authoritative information.</p>
 </body>
 </html>

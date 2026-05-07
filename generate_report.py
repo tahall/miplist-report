@@ -937,37 +937,30 @@ def generate_stats_html(dates, counts, all_rows):
   <tbody>{fcast_rows}</tbody>
 </table>"""
 
-    # Queue duration table (last 24 months)
+    # Queue duration chart (last 24 months, oldest → newest left to right)
     month_days = compute_queue_durations(dates, all_rows)
     most_recent_dt = datetime.strptime(dates[-1], "%m/%d/%Y")
-    queue_rows = ""
     y, m = most_recent_dt.year, most_recent_dt.month
+    month_seq = []
     for _ in range(24):
-        days_list = month_days.get((y, m))
-        month_label = datetime(y, m, 1).strftime("%b %Y")
-        if days_list:
-            med = round(median(days_list))
-            cnt = len(days_list)
-            queue_rows += (
-                f"<tr><td>{month_label}</td>"
-                f"<td class='num'><span>{med:,}</span></td>"
-                f"<td class='num'><span>{cnt}</span></td></tr>"
-            )
-        else:
-            queue_rows += f"<tr><td>{month_label}</td><td class='num'>—</td><td class='num'>—</td></tr>"
+        month_seq.append((y, m))
         m -= 1
         if m == 0:
             m, y = 12, y - 1
-    queue_table = f"""<table>
-  <thead>
-    <tr>
-      <th>Month</th>
-      <th class='num'>Median days</th>
-      <th class='num'>Modules</th>
-    </tr>
-  </thead>
-  <tbody>{queue_rows}</tbody>
-</table>"""
+    month_seq.reverse()
+    queue_labels, queue_medians, queue_counts = [], [], []
+    for yr, mo in month_seq:
+        days_list = month_days.get((yr, mo))
+        queue_labels.append(datetime(yr, mo, 1).strftime("%b %Y"))
+        if days_list:
+            queue_medians.append(round(median(days_list)))
+            queue_counts.append(len(days_list))
+        else:
+            queue_medians.append(None)
+            queue_counts.append(0)
+    queue_labels_json = json.dumps(queue_labels)
+    queue_medians_json = json.dumps(queue_medians)
+    queue_counts_json = json.dumps(queue_counts)
 
     # Chart (full timeline)
     datasets = build_chart_data(dates, counts)
@@ -1127,8 +1120,43 @@ new Chart(ctx, {{
 <h2>Time in Queue to Certificate</h2>
 <p class="note">Median calendar days from first appearance in Pending Review/Review Pending to last appearance in the MIP list, for modules that completed the full progression (PR/RP → IR/R → Coordination/Comment Resolution → certificate issued) with a unique module name. FIPS 140-2 modules exit at Coordination; FIPS 140-3 modules may exit at Coordination/CR or Finalization. Grouped by approximate month of certificate issuance.</p>
 <div class="card">
-{queue_table}
+  <canvas id="queueChart" style="max-height:320px"></canvas>
 </div>
+<script>
+new Chart(document.getElementById('queueChart').getContext('2d'), {{
+  type: 'bar',
+  data: {{
+    labels: {queue_labels_json},
+    datasets: [{{
+      label: 'Median days in queue',
+      data: {queue_medians_json},
+      backgroundColor: '#4e79a7',
+      borderRadius: 3,
+    }}]
+  }},
+  options: {{
+    responsive: true,
+    plugins: {{
+      legend: {{ display: false }},
+      tooltip: {{
+        callbacks: {{
+          afterBody: (items) => {{
+            const counts = {queue_counts_json};
+            return 'Modules: ' + counts[items[0].dataIndex];
+          }}
+        }}
+      }}
+    }},
+    scales: {{
+      x: {{ ticks: {{ maxRotation: 45, minRotation: 45, font: {{ size: 11 }} }} }},
+      y: {{
+        beginAtZero: true,
+        title: {{ display: true, text: 'Median days in queue' }}
+      }}
+    }}
+  }}
+}});
+</script>
 
 <p class="footer">Generated {generated_at}</p>
 <p class="footer">This is an unofficial tool and is not affiliated with or endorsed by NIST or the Internet Archive. Data is scraped from the <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CMVP Modules In Process list</a>; historical data is sourced from the <a href="https://web.archive.org" target="_blank">Wayback Machine</a>. This data may not be complete or accurate. Always refer to the official NIST source for authoritative information.</p>
