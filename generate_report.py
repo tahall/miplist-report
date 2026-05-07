@@ -740,6 +740,100 @@ def compute_aging(all_rows, dates, status_since):
     return result
 
 
+def compute_queue_durations(dates, all_rows):
+    """Return {(year, month): [days, ...]} for modules that completed the queue.
+
+    Supports both FIPS 140-2 (exits at Coordination) and FIPS 140-3 (exits at
+    Finalization or Coordination/CR if Finalization was missed between scrapes).
+
+    Rules:
+    - Module name must be unique (no other module shares the name) at every scrape
+      date during its time in the queue.
+    - The normalised-status sequence must be non-decreasing through stages 1-3 with
+      no off-path statuses; stage 4 (Finalization) is optional.
+    - The module must have disappeared from the list after reaching stage 3 or 4
+      (i.e. not present on the most recent scrape date).
+    - If the same key (name/vendor/standard) has multiple continuous submissions,
+      each is evaluated independently.
+    The certificate month is approximated as the month of the module's last MIP entry.
+    """
+    QUEUE_STAGE = {
+        'Pending Review': 1, 'Review Pending': 1,
+        'In Review': 2, 'Review': 2,
+        'Coordination': 3, 'Comment Resolution - Lab': 3, 'Comment Resolution - CMVP': 3,
+        'Finalization': 4,
+    }
+
+    date_idx = {d: i for i, d in enumerate(dates)}
+    new_date = dates[-1]
+
+    # (pub_date, module_name) -> set of (mn, nvn, std) keys present on that date
+    date_name_keys = {}
+    key_history = {}
+
+    for pub_date, mn, vn, std, status in all_rows:
+        norm = normalize_status(status)
+        key = (mn, normalize_vendor(vn), std)
+        date_name_keys.setdefault((pub_date, mn), set()).add(key)
+        key_history.setdefault(key, []).append((pub_date, norm))
+
+    month_days = {}
+
+    for key, history in key_history.items():
+        mn = key[0]
+        history.sort(key=lambda x: date_idx.get(x[0], 0))
+
+        # Split into separate continuous submissions (handles resubmissions and date gaps)
+        segments = _split_into_submissions(history, date_idx)
+
+        for seg in segments:
+            hdates = [e[0] for e in seg]
+            statuses = [e[1] for e in seg]
+
+            # Must have completed (not in current list)
+            if hdates[-1] == new_date:
+                continue
+
+            # Must have exited at stage 3 or 4 (Coordination/CR/Finalization)
+            if QUEUE_STAGE.get(statuses[-1], -1) < 3:
+                continue
+
+            # No concurrent submissions (multiple entries for same key on same date)
+            if len(hdates) != len(set(hdates)):
+                continue
+
+            # All statuses must be valid progression statuses
+            if not all(s in QUEUE_STAGE for s in statuses):
+                continue
+
+            stages = [QUEUE_STAGE[s] for s in statuses]
+
+            # Must start at stage 1
+            if stages[0] != 1:
+                continue
+
+            # Stages must be non-decreasing
+            if any(stages[i] < stages[i - 1] for i in range(1, len(stages))):
+                continue
+
+            # Stages 1, 2, and 3 must all appear (stage 4 is optional)
+            if not {1, 2, 3}.issubset(stages):
+                continue
+
+            # Rule 1: module name must be unique at every date in this segment
+            if not all(len(date_name_keys.get((d, mn), set())) == 1 for d in hdates):
+                continue
+
+            first_dt = datetime.strptime(hdates[0], "%m/%d/%Y")
+            last_dt = datetime.strptime(hdates[-1], "%m/%d/%Y")
+            total_days = (last_dt - first_dt).days
+
+            cert_month = (last_dt.year, last_dt.month)
+            month_days.setdefault(cert_month, []).append(total_days)
+
+    return month_days
+
+
 def generate_stats_html(dates, counts, all_rows):
     """Generate HTML for the statistics page (miplist-stats.html)."""
     # Extremes table
@@ -841,6 +935,38 @@ def generate_stats_html(dates, counts, all_rows):
     </tr>
   </thead>
   <tbody>{fcast_rows}</tbody>
+</table>"""
+
+    # Queue duration table (last 24 months)
+    month_days = compute_queue_durations(dates, all_rows)
+    most_recent_dt = datetime.strptime(dates[-1], "%m/%d/%Y")
+    queue_rows = ""
+    y, m = most_recent_dt.year, most_recent_dt.month
+    for _ in range(24):
+        days_list = month_days.get((y, m))
+        month_label = datetime(y, m, 1).strftime("%b %Y")
+        if days_list:
+            med = round(median(days_list))
+            cnt = len(days_list)
+            queue_rows += (
+                f"<tr><td>{month_label}</td>"
+                f"<td class='num'><span>{med:,}</span></td>"
+                f"<td class='num'><span>{cnt}</span></td></tr>"
+            )
+        else:
+            queue_rows += f"<tr><td>{month_label}</td><td class='num'>—</td><td class='num'>—</td></tr>"
+        m -= 1
+        if m == 0:
+            m, y = 12, y - 1
+    queue_table = f"""<table>
+  <thead>
+    <tr>
+      <th>Month</th>
+      <th class='num'>Median days</th>
+      <th class='num'>Modules</th>
+    </tr>
+  </thead>
+  <tbody>{queue_rows}</tbody>
 </table>"""
 
     # Chart (full timeline)
@@ -996,6 +1122,12 @@ new Chart(ctx, {{
 <h2>Historical Highs and Lows</h2>
 <div class="card">
 {ext_table}
+</div>
+
+<h2>Time in Queue to Certificate</h2>
+<p class="note">Median calendar days from first appearance in Pending Review/Review Pending to last appearance in the MIP list, for modules that completed the full progression (PR/RP → IR/R → Coordination/Comment Resolution → certificate issued) with a unique module name. FIPS 140-2 modules exit at Coordination; FIPS 140-3 modules may exit at Coordination/CR or Finalization. Grouped by approximate month of certificate issuance.</p>
+<div class="card">
+{queue_table}
 </div>
 
 <p class="footer">Generated {generated_at}</p>
