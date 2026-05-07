@@ -932,7 +932,7 @@ def generate_stats_html(dates, counts, all_rows):
 <h1>NIST CMVP MIP Statistics</h1>
 <p class="subtitle"><a href="index.html">&larr; Back to report</a></p>
 
-<h2>Status Over Time (Full History)</h2>
+<h2>Status Over Time (Since {earliest_str})</h2>
 <div class="chart-row">
   <div class="chart-container">
     <canvas id="mipChart"></canvas>
