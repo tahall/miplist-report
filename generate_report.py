@@ -8,7 +8,7 @@ import sqlite3
 import sys
 from collections import Counter
 from datetime import datetime
-from statistics import mean, median
+from statistics import median
 
 DB_FILE = "nist_modules_in_process.db"
 OUTPUT_FILE = "index.html"
