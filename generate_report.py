@@ -589,14 +589,14 @@ def changes_html(prev_date, new_date, added, removed, changed, reclassified=None
 
 
 def compute_forecasts(dates, counts):
-    """Return list of {label, color, current, trend: [+30d,+91d], ewma: value}.
+    """Return list of {label, color, current, trend: [+30d,+61d,+91d], ewma: value}.
 
     trend: weighted least squares on data from Mar 6 2026 onward (up to 3 months back),
            with exponential decay weights (decay=0.97/day) so recent data counts more.
     ewma:  exponential weighted moving average (alpha=0.05), flat projection.
     """
     DECAY = 0.95
-    HORIZONS = [30, 91]
+    HORIZONS = [30, 61, 91]
 
     most_recent_dt = datetime.strptime(dates[-1], "%m/%d/%Y")
     cutoff = max(subtract_months(most_recent_dt, 3), datetime(2026, 3, 6))
@@ -910,7 +910,7 @@ def generate_stats_html(dates, counts, all_rows):
         label, color, current = row["label"], row["color"], row["current"]
         swatch = f"<span class='swatch' style='background:{color}'></span>" if color else ""
         sep = " class='sep-row'" if label == "Total" else ""
-        t1, t3 = row["trend"]
+        t1, t2, t3 = row["trend"]
 
         def delta_span(pred, cur=current):
             d = pred - cur
@@ -924,6 +924,7 @@ def generate_stats_html(dates, counts, all_rows):
             f"<tr{sep}><td>{swatch}{label}</td>"
             f"<td class='fnum'><span class='val'>{current:,}</span><span class='dlt'></span></td>"
             f"<td class='fnum'><span class='val'>{t1:,}</span>{delta_span(t1)}</td>"
+            f"<td class='fnum'><span class='val'>{t2:,}</span>{delta_span(t2)}</td>"
             f"<td class='fnum'><span class='val'>{t3:,}</span>{delta_span(t3)}</td></tr>"
         )
 
@@ -931,7 +932,7 @@ def generate_stats_html(dates, counts, all_rows):
   <thead>
     <tr>
       <th>Status</th><th class='num'>Current</th>
-      <th class='num'>+1 Month</th><th class='num'>+3 Months</th>
+      <th class='num'>+1 Month</th><th class='num'>+2 Months</th><th class='num'>+3 Months</th>
     </tr>
   </thead>
   <tbody>{fcast_rows}</tbody>
