@@ -658,7 +658,7 @@ def compute_extremes(dates, counts):
     Exception: "On Hold / Hold" includes zero-count dates so the median and low
     reflect days when no modules are in that status.
     """
-    INCLUDE_ZEROS = {"On Hold / Hold", "Finalization"}
+    INCLUDE_ZEROS = {"On Hold / Hold", "Finalization", "Not Displayed"}
     most_recent_dt = datetime.strptime(dates[-1], "%m/%d/%Y")
     cutoff = subtract_months(most_recent_dt, 12)
     recent_dates = [d for d in dates if datetime.strptime(d, "%m/%d/%Y") >= cutoff]
