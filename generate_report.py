@@ -828,11 +828,19 @@ def compute_queue_durations(dates, all_rows):
             if len(hdates) != len(set(hdates)):
                 continue
 
-            # All statuses must be valid progression statuses
-            if not all(s in QUEUE_STAGE for s in statuses):
+            # Hold/On Hold is allowed as a pass-through pause; all other statuses
+            # must be valid pipeline statuses.
+            HOLD_STATUSES = {'Hold', 'On Hold'}
+            if not all(s in QUEUE_STAGE or s in HOLD_STATUSES for s in statuses):
                 continue
 
-            stages = [QUEUE_STAGE[s] for s in statuses]
+            # Build pipeline (excluding Hold) for stage-based validation so that
+            # Hold entries don't interfere with the non-decreasing stages check.
+            pipeline = [(d, s) for d, s in zip(hdates, statuses) if s not in HOLD_STATUSES]
+            if not pipeline:
+                continue
+            pipeline_dates, pipeline_statuses = zip(*pipeline)
+            stages = [QUEUE_STAGE[s] for s in pipeline_statuses]
 
             # Must start at stage 0 (Cost Recovery) or stage 1 (Pending Review)
             if stages[0] not in (0, 1):
@@ -850,7 +858,7 @@ def compute_queue_durations(dates, all_rows):
             if not all(len(date_name_keys.get((d, mn), set())) == 1 for d in hdates):
                 continue
 
-            first_stage1_date = next(d for d, s in zip(hdates, stages) if s >= 1)
+            first_stage1_date = next(d for d, s in zip(pipeline_dates, stages) if s >= 1)
             first_dt = datetime.strptime(first_stage1_date, "%m/%d/%Y")
             last_dt = datetime.strptime(hdates[-1], "%m/%d/%Y")
             total_days = (last_dt - first_dt).days
