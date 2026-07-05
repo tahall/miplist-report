@@ -655,10 +655,16 @@ def compute_extremes(dates, counts):
 
     Each period value is (high_val, [high_dates], low_val, [low_dates]) or None.
     High/low exclude zero-count dates for individual statuses; Total includes all.
-    Exception: "On Hold / Hold" includes zero-count dates so the median and low
-    reflect days when no modules are in that status.
+    Exception: statuses in INCLUDE_ZEROS include zero-count dates so the median
+    and low reflect days when no modules are in that status.
+    For statuses in STATUS_START_DATES, only dates on or after the start date are
+    considered (the status did not exist before then).
     """
-    INCLUDE_ZEROS = {"On Hold / Hold", "Finalization", "Not Displayed"}
+    INCLUDE_ZEROS = {"On Hold / Hold", "Finalization", "Not Displayed", "Cost Recovery"}
+    # Statuses that were introduced mid-history; dates before the start date are excluded.
+    STATUS_START_DATES = {
+        "Cost Recovery": datetime(2026, 3, 6),
+    }
     most_recent_dt = datetime.strptime(dates[-1], "%m/%d/%Y")
     cutoff = subtract_months(most_recent_dt, 12)
     recent_dates = [d for d in dates if datetime.strptime(d, "%m/%d/%Y") >= cutoff]
@@ -676,8 +682,13 @@ def compute_extremes(dates, counts):
         current = val_for(new_date)
         row = {"label": label, "color": color, "current": current}
 
+        start_dt = STATUS_START_DATES.get(label)
         for period_label, period_dates in (("recent", recent_dates), ("alltime", dates)):
-            pairs = [(val_for(d), d) for d in period_dates]
+            filtered_dates = (
+                [d for d in period_dates if datetime.strptime(d, "%m/%d/%Y") >= start_dt]
+                if start_dt else period_dates
+            )
+            pairs = [(val_for(d), d) for d in filtered_dates]
             if source_statuses is not None and label not in INCLUDE_ZEROS:
                 pairs = [(v, d) for v, d in pairs if v > 0]
             if not pairs:
