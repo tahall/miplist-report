@@ -660,10 +660,14 @@ def compute_extremes(dates, counts):
     For statuses in STATUS_START_DATES, only dates on or after the start date are
     considered (the status did not exist before then).
     """
-    INCLUDE_ZEROS = {"On Hold / Hold", "Finalization", "Not Displayed", "Cost Recovery"}
+    INCLUDE_ZEROS = {"On Hold / Hold", "Finalization", "Not Displayed", "Cost Recovery",
+                     "Comment Resolution - CMVP", "Comment Resolution - Lab", "Pending Resubmission"}
     # Statuses that were introduced mid-history; dates before the start date are excluded.
     STATUS_START_DATES = {
-        "Cost Recovery": datetime(2026, 3, 6),
+        "Cost Recovery":             datetime(2026, 3, 6),
+        "Comment Resolution - CMVP": datetime(2026, 3, 6),
+        "Comment Resolution - Lab":  datetime(2026, 3, 6),
+        "Pending Resubmission":      datetime(2026, 3, 6),
     }
     most_recent_dt = datetime.strptime(dates[-1], "%m/%d/%Y")
     cutoff = subtract_months(most_recent_dt, 12)
