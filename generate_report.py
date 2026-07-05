@@ -63,6 +63,11 @@ CHART_STATUS_GROUPS = [
     ("Not Displayed",                   ["Not Displayed"],                          "#bab0ac"),
 ]
 
+# Chart legend groups retired from the MIP list (label -> last date seen).
+STATUS_RETIRED_DATES = {
+    "Coordination": "3/4/2026",
+}
+
 # Map legacy status names to current equivalents for stats aggregation
 LEGACY_STATUS_MAP = {
     "Review Pending": "Pending Review",
@@ -685,7 +690,8 @@ def compute_extremes(dates, counts):
             return sum(counts.get(d, {}).get(s, 0) for s in source_statuses)
 
         current = val_for(new_date)
-        row = {"label": label, "color": color, "current": current}
+        row = {"label": label, "color": color, "current": current,
+               "retired": label in STATUS_RETIRED_DATES}
 
         start_dt = STATUS_START_DATES.get(label)
         for period_label, period_dates in (("recent", recent_dates), ("alltime", dates)):
@@ -872,9 +878,10 @@ def generate_stats_html(dates, counts, all_rows):
         label, color, current = row["label"], row["color"], row["current"]
         swatch = f"<span class='swatch' style='background:{color}'></span>" if color else ""
         sep = " class='sep-row'" if label == "Total" else ""
+        current_cell = "<td class='num no-data'><span>—</span></td>" if row.get("retired") else f"<td class='num'><span>{current:,}</span></td>"
         ext_rows += (
             f"<tr{sep}><td>{swatch}{label}</td>"
-            f"<td class='num'><span>{current:,}</span></td>"
+            f"{current_cell}"
             f"{ext_cell(row['recent'], divider=True)}"
             f"{ext_cell(row['alltime'], divider=True)}</tr>"
         )
