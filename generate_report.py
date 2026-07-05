@@ -985,18 +985,21 @@ def generate_stats_html(dates, counts, all_rows):
         if m == 0:
             m, y = 12, y - 1
     month_seq.reverse()
-    queue_labels, queue_medians, queue_counts = [], [], []
+    queue_labels, queue_medians, queue_averages, queue_counts = [], [], [], []
     for yr, mo in month_seq:
         days_list = month_days.get((yr, mo))
         queue_labels.append(datetime(yr, mo, 1).strftime("%b %Y"))
         if days_list:
             queue_medians.append(round(median(days_list)))
+            queue_averages.append(round(sum(days_list) / len(days_list)))
             queue_counts.append(len(days_list))
         else:
             queue_medians.append(None)
+            queue_averages.append(None)
             queue_counts.append(0)
     queue_labels_json = json.dumps(queue_labels)
     queue_medians_json = json.dumps(queue_medians)
+    queue_averages_json = json.dumps(queue_averages)
     queue_counts_json = json.dumps(queue_counts)
 
     # Chart (full timeline)
@@ -1155,7 +1158,7 @@ new Chart(ctx, {{
 </div>
 
 <h2>Time in Queue to Certificate</h2>
-<p class="note">Median calendar days from first appearance in Pending Review/Review Pending to last appearance in the MIP list, for modules that completed the full progression (PR/RP → IR/R → Coordination/Comment Resolution → certificate issued) with a unique module name. FIPS 140-2 modules exit at Coordination; FIPS 140-3 modules may exit at Coordination/CR or Finalization. Grouped by approximate month of certificate issuance.</p>
+<p class="note">Median (bar) and mean (thin overlay) calendar days from first appearance in Pending Review/Review Pending to last appearance in the MIP list, for modules that completed the full progression (PR/RP → IR/R → Coordination/Comment Resolution → certificate issued) with a unique module name. FIPS 140-2 modules exit at Coordination; FIPS 140-3 modules may exit at Coordination/CR or Finalization. Grouped by approximate month of certificate issuance.</p>
 <div class="card">
   <canvas id="queueChart" style="max-height:320px"></canvas>
 </div>
@@ -1164,20 +1167,33 @@ new Chart(document.getElementById('queueChart').getContext('2d'), {{
   type: 'bar',
   data: {{
     labels: {queue_labels_json},
-    datasets: [{{
-      label: 'Median days in queue',
-      data: {queue_medians_json},
-      backgroundColor: '#4e79a7',
-      borderRadius: 3,
-    }}]
+    datasets: [
+      {{
+        label: 'Median days',
+        data: {queue_medians_json},
+        backgroundColor: '#4e79a7',
+        borderRadius: 3,
+        order: 2,
+      }},
+      {{
+        label: 'Mean days',
+        data: {queue_averages_json},
+        backgroundColor: 'rgba(220, 80, 50, 0.85)',
+        barThickness: 3,
+        borderRadius: 1,
+        order: 1,
+      }}
+    ]
   }},
   options: {{
+    grouped: false,
     responsive: true,
     plugins: {{
-      legend: {{ display: false }},
+      legend: {{ display: true, position: 'top' }},
       tooltip: {{
+        mode: 'index',
         callbacks: {{
-          afterBody: (items) => {{
+          footer: (items) => {{
             const counts = {queue_counts_json};
             return 'Modules: ' + counts[items[0].dataIndex];
           }}
@@ -1188,7 +1204,7 @@ new Chart(document.getElementById('queueChart').getContext('2d'), {{
       x: {{ ticks: {{ maxRotation: 45, minRotation: 45, font: {{ size: 11 }} }} }},
       y: {{
         beginAtZero: true,
-        title: {{ display: true, text: 'Median days in queue' }}
+        title: {{ display: true, text: 'Days in queue' }}
       }}
     }}
   }}

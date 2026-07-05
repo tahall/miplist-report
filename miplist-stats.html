@@ -161,7 +161,7 @@ new Chart(ctx, {
 </div>
 
 <h2>Time in Queue to Certificate</h2>
-<p class="note">Median calendar days from first appearance in Pending Review/Review Pending to last appearance in the MIP list, for modules that completed the full progression (PR/RP → IR/R → Coordination/Comment Resolution → certificate issued) with a unique module name. FIPS 140-2 modules exit at Coordination; FIPS 140-3 modules may exit at Coordination/CR or Finalization. Grouped by approximate month of certificate issuance.</p>
+<p class="note">Median (bar) and mean (thin overlay) calendar days from first appearance in Pending Review/Review Pending to last appearance in the MIP list, for modules that completed the full progression (PR/RP → IR/R → Coordination/Comment Resolution → certificate issued) with a unique module name. FIPS 140-2 modules exit at Coordination; FIPS 140-3 modules may exit at Coordination/CR or Finalization. Grouped by approximate month of certificate issuance.</p>
 <div class="card">
   <canvas id="queueChart" style="max-height:320px"></canvas>
 </div>
@@ -170,20 +170,33 @@ new Chart(document.getElementById('queueChart').getContext('2d'), {
   type: 'bar',
   data: {
     labels: ["Aug 2024", "Sep 2024", "Oct 2024", "Nov 2024", "Dec 2024", "Jan 2025", "Feb 2025", "Mar 2025", "Apr 2025", "May 2025", "Jun 2025", "Jul 2025", "Aug 2025", "Sep 2025", "Oct 2025", "Nov 2025", "Dec 2025", "Jan 2026", "Feb 2026", "Mar 2026", "Apr 2026", "May 2026", "Jun 2026", "Jul 2026"],
-    datasets: [{
-      label: 'Median days in queue',
-      data: [552, 719, 718, 680, 264, 650, 382, 694, 529, 471, 432, 461, 384, 398, 748, 425, 451, 383, 586, 328, 337, 466, 223, 238],
-      backgroundColor: '#4e79a7',
-      borderRadius: 3,
-    }]
+    datasets: [
+      {
+        label: 'Median days',
+        data: [552, 719, 718, 680, 264, 650, 382, 694, 529, 471, 432, 461, 384, 398, 748, 425, 451, 383, 586, 328, 337, 466, 223, 238],
+        backgroundColor: '#4e79a7',
+        borderRadius: 3,
+        order: 2,
+      },
+      {
+        label: 'Mean days',
+        data: [552, 605, 565, 597, 324, 623, 398, 644, 564, 607, 427, 449, 408, 333, 748, 442, 448, 399, 586, 312, 364, 414, 256, 238],
+        backgroundColor: 'rgba(220, 80, 50, 0.85)',
+        barThickness: 3,
+        borderRadius: 1,
+        order: 1,
+      }
+    ]
   },
   options: {
+    grouped: false,
     responsive: true,
     plugins: {
-      legend: { display: false },
+      legend: { display: true, position: 'top' },
       tooltip: {
+        mode: 'index',
         callbacks: {
-          afterBody: (items) => {
+          footer: (items) => {
             const counts = [1, 9, 8, 6, 4, 5, 5, 4, 5, 7, 5, 3, 4, 6, 2, 7, 3, 12, 2, 14, 10, 16, 23, 1];
             return 'Modules: ' + counts[items[0].dataIndex];
           }
@@ -194,14 +207,14 @@ new Chart(document.getElementById('queueChart').getContext('2d'), {
       x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 11 } } },
       y: {
         beginAtZero: true,
-        title: { display: true, text: 'Median days in queue' }
+        title: { display: true, text: 'Days in queue' }
       }
     }
   }
 });
 </script>
 
-<p class="footer">Generated 2026-07-05 13:45:05</p>
+<p class="footer">Generated 2026-07-05 13:49:56</p>
 <p class="footer">This is an unofficial tool and is not affiliated with or endorsed by NIST or the Internet Archive. Data is scraped from the <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CMVP Modules In Process list</a>; historical data is sourced from the <a href="https://web.archive.org" target="_blank">Wayback Machine</a>. This data may not be complete or accurate. Always refer to the official NIST source for authoritative information.</p>
 </body>
 </html>
