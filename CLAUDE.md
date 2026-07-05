@@ -68,6 +68,10 @@ Legacy names (`Review Pending`, `In Review`, `Coordination`, `On Hold`) appear i
 
 **Submission splitting:** `_split_into_submissions()` in `generate_report.py` detects when a module key disappears and reappears (date gap) or regresses from a late stage back to an early stage — indicating a new submission reusing the same key. Report logic uses the most recent contiguous segment for per-module stats and history popups.
 
+**Historical Highs and Lows table** (`compute_extremes()` in `generate_report.py`): two module-level dicts control special treatment of statuses in this table:
+- `STATUS_START_DATES`: statuses introduced mid-history (e.g., `"Cost Recovery"`, `"Comment Resolution - CMVP/Lab"`, `"Pending Resubmission"` — all introduced 2026-03-06). Dates before the start date are excluded so pre-existence zeros don't skew the median/low. Zero-count days on or after the start date are included.
+- `STATUS_RETIRED_DATES`: statuses no longer in use (e.g., `"Coordination"`, last seen 2026-03-04). The Current column renders `—` instead of `0` to signal retirement. Historical high/median/low are still shown for reference.
+
 **Automation:** `.github/workflows/scrape.yml` runs both scripts daily at 5 AM EST and commits `nist_modules_in_process.db`, `index.html`, and `miplist-stats.html` back to `main`.
 
 **`latest.db`** (gitignored): a secondary DB sometimes used locally for merging; not the canonical DB.
