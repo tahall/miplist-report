@@ -783,6 +783,7 @@ def compute_queue_durations(dates, all_rows):
     The certificate month is approximated as the month of the module's last MIP entry.
     """
     QUEUE_STAGE = {
+        'Cost Recovery':             0,
         'Pending Review': 1, 'Review Pending': 1,
         'In Review': 2, 'Review': 2,
         'Coordination': 3, 'Comment Resolution - Lab': 3, 'Comment Resolution - CMVP': 3,
@@ -833,8 +834,8 @@ def compute_queue_durations(dates, all_rows):
 
             stages = [QUEUE_STAGE[s] for s in statuses]
 
-            # Must start at stage 1
-            if stages[0] != 1:
+            # Must start at stage 0 (Cost Recovery) or stage 1 (Pending Review)
+            if stages[0] not in (0, 1):
                 continue
 
             # Stages must be non-decreasing
@@ -849,7 +850,8 @@ def compute_queue_durations(dates, all_rows):
             if not all(len(date_name_keys.get((d, mn), set())) == 1 for d in hdates):
                 continue
 
-            first_dt = datetime.strptime(hdates[0], "%m/%d/%Y")
+            first_stage1_date = next(d for d, s in zip(hdates, stages) if s >= 1)
+            first_dt = datetime.strptime(first_stage1_date, "%m/%d/%Y")
             last_dt = datetime.strptime(hdates[-1], "%m/%d/%Y")
             total_days = (last_dt - first_dt).days
 
