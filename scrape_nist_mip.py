@@ -28,8 +28,103 @@ def normalize_vendor(raw):
     return re.sub(r'\s*\|\s*', ' ', raw).strip()
 
 
+# Status columns used by the pre-November-2020 MIP layout, which had no Status
+# column: a module's status was encoded by a highlighted cell in one of these.
+OLD_STATUS_COLUMNS = ("Review Pending", "In Review", "Coordination", "Finalization")
+
+# The pre-November-2020 layout had no Standard column, and every module from that
+# era predates FIPS 140-3 submissions.
+DEFAULT_OLD_STANDARD = "FIPS 140-2"
+
+
+def _is_marked(td):
+    """True if a cell carries the marker class used by the pre-2020 layout.
+
+    The class name changed from 'highlight' to 'mip-highlight' around August 2020,
+    so match on the substring rather than an exact name.
+    """
+    return any("highlight" in c for c in (td.get("class") or []))
+
+
+def _parse_footer(table, status_cols=None):
+    """Return (not_displayed, {status: displayed_count}) from the table footer.
+
+    Handles the current layout ('Not Displayed' | 28) and the pre-2020 layout
+    ('Not Displayed: 10' followed by one count per status column).
+    """
+    tfoot = table.find("tfoot")
+    if not tfoot:
+        return 0, {}
+
+    not_displayed = 0
+    displayed = {}
+    for tr in tfoot.find_all("tr"):
+        cells = [td.get_text(strip=True) for td in tr.find_all("td")]
+        if not cells:
+            continue
+        label = cells[0]
+        if label.startswith("Not Displayed"):
+            m = re.search(r"(\d+)", label)
+            if m:
+                not_displayed = int(m.group(1))
+            elif len(cells) >= 2 and cells[-1].isdigit():
+                not_displayed = int(cells[-1])
+        elif label.startswith("Displayed") and status_cols:
+            counts = [c for c in cells[1:] if c.isdigit()]
+            if len(counts) == len(status_cols):
+                displayed = {s: int(c) for s, c in zip(status_cols, counts)}
+    return not_displayed, displayed
+
+
+def _parse_old_rows(table, headers):
+    """Return (rows, unmarked) for the pre-2020 layout.
+
+    Rows are normalised to the canonical [module, vendor, standard, status] shape so
+    the rest of the pipeline sees no difference between layouts.
+    """
+    status_idx = {h: i for i, h in enumerate(headers) if h in OLD_STATUS_COLUMNS}
+    std_idx = headers.index("Standard") if "Standard" in headers else None
+
+    rows, unmarked = [], 0
+    tbody = table.find("tbody")
+    if not tbody:
+        return rows, unmarked
+
+    for tr in tbody.find_all("tr"):
+        tds = tr.find_all("td")
+        if len(tds) < 3:
+            continue
+        status = next(
+            (h for h, i in status_idx.items() if i < len(tds) and _is_marked(tds[i])),
+            None,
+        )
+        if status is None:
+            unmarked += 1
+            continue
+        standard = (
+            tds[std_idx].get_text(strip=True)
+            if std_idx is not None and std_idx < len(tds)
+            else DEFAULT_OLD_STANDARD
+        )
+        rows.append([
+            tds[0].get_text(strip=True),
+            tds[1].get_text(strip=True),
+            standard or DEFAULT_OLD_STANDARD,
+            status,
+        ])
+    return rows, unmarked
+
+
 def parse_page(html, verbose=False):
-    """Parse the NIST MIP page HTML and return (publish_date, not_displayed, rows)."""
+    """Parse the NIST MIP page HTML and return (publish_date, not_displayed, rows, valid).
+
+    Handles the current layout (a dedicated Status column) and the pre-November-2020
+    layout (one column per status, the module's status marked by a highlighted cell).
+
+    `valid` is False only when a pre-2020 page's per-status row counts disagree with
+    the totals printed in its own table footer, which means the page should not be
+    trusted and the caller should skip it.
+    """
     if verbose:
         print("  Parsing HTML...")
     soup = BeautifulSoup(html, "html.parser")
@@ -47,8 +142,29 @@ def parse_page(html, verbose=False):
     if not table:
         if verbose:
             print("  No table found in HTML.")
-        return publish_date, not_displayed, []
+        return publish_date, not_displayed, [], True
 
+    headers = [th.get_text(strip=True) for th in table.find_all("th")]
+    status_cols = [h for h in headers if h in OLD_STATUS_COLUMNS]
+
+    if status_cols:
+        # Pre-November-2020 layout.
+        not_displayed, footer_counts = _parse_footer(table, status_cols)
+        rows, unmarked = _parse_old_rows(table, headers)
+
+        expected = {s: n for s, n in footer_counts.items() if n}
+        actual = dict(Counter(r[3] for r in rows))
+        valid = (not expected) or (actual == expected)
+        if verbose or not valid:
+            print(f"  Legacy layout: {len(rows)} rows, {unmarked} unmarked, "
+                  f"not_displayed={not_displayed}")
+            if not valid:
+                print(f"  Footer mismatch: parsed {actual} vs footer {expected}")
+            elif expected:
+                print(f"  Footer cross-check OK: {actual}")
+        return publish_date, not_displayed, rows, valid
+
+    # Current layout.
     tfoot = table.find("tfoot")
     if tfoot:
         for tr in tfoot.find_all("tr"):
@@ -59,7 +175,7 @@ def parse_page(html, verbose=False):
     rows = []
     tbody = table.find("tbody")
     if not tbody:
-        return publish_date, not_displayed, rows
+        return publish_date, not_displayed, rows, True
 
     for tr in tbody.find_all("tr"):
         cells = []
@@ -72,7 +188,7 @@ def parse_page(html, verbose=False):
 
     if verbose:
         print(f"  Parsed {len(rows)} rows from table.")
-    return publish_date, not_displayed, rows
+    return publish_date, not_displayed, rows, True
 
 
 def print_summary(publish_date, not_displayed, rows):
@@ -241,10 +357,15 @@ def scrape_from_wayback(from_date_str, to_date_str=None, verbose=False, dry_run=
             print(f"  [{i+1}/{len(snapshots)}] Failed to fetch snapshot {timestamp}: {e}")
             continue
 
-        publish_date, not_displayed, rows = parse_page(response.text, verbose=verbose)
+        publish_date, not_displayed, rows, valid = parse_page(response.text, verbose=verbose)
 
         if not publish_date:
             print(f"  [{i+1}/{len(snapshots)}] Snapshot {timestamp}: no publish date found, skipping.")
+            continue
+
+        if not valid:
+            print(f"  [{i+1}/{len(snapshots)}] Snapshot {timestamp}: parsed counts disagree "
+                  f"with table footer, skipping.")
             continue
 
         if publish_date in seen_publish_dates:
@@ -273,7 +394,11 @@ def scrape_modules_in_process(verbose=False, dry_run=False):
     if verbose:
         print(f"  Received {len(response.text)} bytes.")
 
-    publish_date, not_displayed, rows = parse_page(response.text, verbose=verbose)
+    publish_date, not_displayed, rows, valid = parse_page(response.text, verbose=verbose)
+
+    if not valid:
+        print("Parsed counts disagree with the table footer; refusing to save.", file=sys.stderr)
+        sys.exit(1)
 
     if not rows:
         print("No table found on the page.", file=sys.stderr)
