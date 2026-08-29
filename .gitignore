@@ -205,3 +205,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# --- miplist-report project-specific ---
+# Secondary/local DB used only as a merge source (see merge_db.py); not canonical.
+latest.db
+# Scratch dumps of scraper console output.
+not-disp.txt

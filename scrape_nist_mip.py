@@ -18,6 +18,16 @@ DB_FILE = "nist_modules_in_process.db"
 NIST_URL = "https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list"
 
 
+def normalize_vendor(raw):
+    """Normalize vendor name for key construction, collapsing pipe-separator spacing variants.
+
+    NIST's site sometimes renders 'Codan | DTC' as 'Codan DTC' (dropping the pipe) for
+    certain statuses. Normalizing ensures both forms map to the same key, matching
+    normalize_vendor() in generate_report.py.
+    """
+    return re.sub(r'\s*\|\s*', ' ', raw).strip()
+
+
 def parse_page(html, verbose=False):
     """Parse the NIST MIP page HTML and return (publish_date, not_displayed, rows)."""
     if verbose:
@@ -342,7 +352,7 @@ def print_changes(publish_date):
             "SELECT module_name, vendor_name, standard, status FROM modules WHERE publish_date = ?",
             (date,),
         )
-        return {(r[0], r[1], r[2]): r[3] for r in cur.fetchall()}
+        return {(r[0], normalize_vendor(r[1]), r[2]): r[3] for r in cur.fetchall()}
 
     old = fetch_rows(prev_date)
     new = fetch_rows(publish_date)
