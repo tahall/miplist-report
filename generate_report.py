@@ -1065,6 +1065,18 @@ def generate_stats_html(dates, counts, all_rows):
     totals = [sum(counts.get(d, {}).values()) for d in dates]
     y_max = max(totals) * 1.1 if totals else 100
 
+    # Indices of points followed by a gap, for the dotted bridge overlay below.
+    # Sampling density varies ~15x across the timeline (4% of days covered in
+    # 2019, 83% in 2026), so on the full-history axis the early years read as
+    # scattered bars on empty space. The bridges show continuity without
+    # inventing bars.
+    gap_starts = [
+        i for i in range(len(dates) - 1)
+        if (datetime.strptime(dates[i + 1], "%m/%d/%Y")
+            - datetime.strptime(dates[i], "%m/%d/%Y")).days > 1
+    ]
+    gap_starts_json = json.dumps(gap_starts)
+
     # Today's summary panel
     new_date = dates[-1]
     summary_html = summary_panel_html(new_date, dates[-2] if len(dates) > 1 else None, counts)
@@ -1147,8 +1159,53 @@ def generate_stats_html(dates, counts, all_rows):
 
 <script>
 const ctx = document.getElementById('mipChart').getContext('2d');
+
+// Dotted bridges across sampling gaps.
+// Each series' upper stack boundary is continued from the last point before a
+// gap to the first point after it, in that series' own colour, so the bands
+// read as continuous without fabricating any bars.
+//
+// Straight (linear) rather than stepped or curved: a step would assert the
+// value held flat and then jumped on one particular day, and a curve would
+// imply a trajectory the data cannot support. A straight line claims only
+// "it went from here to there".
+//
+// Endpoint pixels are taken from the rendered bar elements rather than from
+// the scales, so the lines land exactly on the bar edges and re-stack
+// correctly when series are toggled off in the legend.
+const gapStarts = {gap_starts_json};
+const gapBridges = {{
+  id: 'gapBridges',
+  afterDatasetsDraw(chart) {{
+    const g = chart.ctx;
+    const sets = chart.data.datasets;
+    g.save();
+    g.setLineDash([2, 3]);
+    g.lineWidth = 1.25;
+    for (const j of gapStarts) {{
+      for (let i = 0; i < sets.length; i++) {{
+        if (!chart.isDatasetVisible(i)) continue;
+        const pts = sets[i].data;
+        // Skip series that are absent on both sides: their boundary coincides
+        // with the series below, and overdrawing darkens the shared line.
+        if (!pts[j] || !pts[j + 1] || (pts[j].y === 0 && pts[j + 1].y === 0)) continue;
+        const meta = chart.getDatasetMeta(i);
+        const a = meta.data[j], b = meta.data[j + 1];
+        if (!a || !b) continue;
+        g.strokeStyle = sets[i].backgroundColor;
+        g.beginPath();
+        g.moveTo(a.x, a.y);
+        g.lineTo(b.x, b.y);
+        g.stroke();
+      }}
+    }}
+    g.restore();
+  }}
+}};
+
 new Chart(ctx, {{
   type: 'bar',
+  plugins: [gapBridges],
   data: {{
     datasets: {chart_datasets_json}
   }},
