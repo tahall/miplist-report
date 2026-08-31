@@ -90,13 +90,6 @@ STATUS_STAGE = {
     "Finalization":              5,
 }
 
-# Ordered list of statuses to show in the stats page duration table
-STATS_STATUSES = [
-    "Pending Review", "Review", "Coordination",
-    "Comment Resolution - CMVP", "Comment Resolution - Lab",
-    "Hold", "Cost Recovery", "Pending Resubmission", "Finalization",
-]
-
 
 def subtract_months(dt, n):
     """Return dt shifted back by n calendar months."""
@@ -381,75 +374,6 @@ def _split_into_submissions(entries, date_idx):
     return segments
 
 
-def compute_status_durations(all_rows, dates):
-    """Return {quarter_str: {status: [duration_days]}} for completed status runs.
-
-    Durations are computed snapshot-to-snapshot. Legacy status names are mapped
-    to their current equivalents before grouping.
-    """
-    date_dt = {d: datetime.strptime(d, "%m/%d/%Y") for d in dates}
-
-    def norm(raw):
-        s = normalize_status(raw)
-        return LEGACY_STATUS_MAP.get(s, s)
-
-    def quarter_str(dt):
-        return f"Q{(dt.month - 1) // 3 + 1} {dt.year}"
-
-    sorted_dates = sorted(dates, key=lambda d: date_dt[d])
-    date_idx = {d: i for i, d in enumerate(sorted_dates)}
-
-    history = {}
-    for pub_date, mn, vn, std, status in all_rows:
-        key = (mn, normalize_vendor(vn), std)
-        history.setdefault(key, []).append((pub_date, norm(status)))
-    for key in history:
-        history[key].sort(key=lambda x: date_dt[x[0]])
-
-    result = {}
-    for entries in history.values():
-        for segment in _split_into_submissions(entries, date_idx):
-            runs = []
-            for pub_date, status in segment:
-                dt = date_dt[pub_date]
-                if runs and runs[-1][2] == status:
-                    runs[-1][1] = dt
-                else:
-                    runs.append([dt, dt, status])
-            for i in range(len(runs) - 1):
-                days = (runs[i + 1][0] - runs[i][0]).days
-                status = runs[i][2]
-                q = quarter_str(runs[i + 1][0])
-                result.setdefault(q, {}).setdefault(status, []).append(days)
-
-    return result
-
-
-def compute_quarterly_changes(all_rows, dates):
-    """Return list of (quarter_str, added, removed) tuples sorted chronologically."""
-    date_dt = {d: datetime.strptime(d, "%m/%d/%Y") for d in dates}
-    sorted_dates = sorted(dates, key=lambda d: date_dt[d])
-
-    keys_by_date = {}
-    for pub_date, mn, vn, std, _status in all_rows:
-        keys_by_date.setdefault(pub_date, set()).add((mn, vn, std))
-
-    quarterly = {}
-    for i in range(1, len(sorted_dates)):
-        prev, curr = sorted_dates[i - 1], sorted_dates[i]
-        added = len(keys_by_date.get(curr, set()) - keys_by_date.get(prev, set()))
-        removed = len(keys_by_date.get(prev, set()) - keys_by_date.get(curr, set()))
-        q = (date_dt[curr].year, (date_dt[curr].month - 1) // 3 + 1)
-        quarterly.setdefault(q, {"added": 0, "removed": 0})
-        quarterly[q]["added"] += added
-        quarterly[q]["removed"] += removed
-
-    return [
-        (f"Q{q[1]} {q[0]}", v["added"], v["removed"])
-        for q, v in sorted(quarterly.items())
-    ]
-
-
 def fetch_validated_modules():
     """Return {module_name_lower: (cert_num, vendor, val_date)} from NIST validated modules list."""
     try:
@@ -477,7 +401,6 @@ def fetch_validated_modules():
             result[module_name.lower()] = (cert_num, vendor, val_date)
 
     return result
-
 
 
 def vendor_breakdown_html(all_rows, new_date):
@@ -615,43 +538,6 @@ def finalization_html(all_rows, new_date, status_since=None, validated=None):
     ), len(rows)
 
 
-def disappearances_html(all_rows, dates):
-    """Return (html, count) for modules that dropped from a non-terminal status (most recent disappearance first)."""
-    terminal = {"Finalization"}
-    date_dt = {d: datetime.strptime(d, "%m/%d/%Y") for d in dates}
-    sorted_dates = sorted(dates, key=lambda d: date_dt[d])
-
-    last_status = {}  # key -> (last_publish_date, normalized_status)
-    for pub_date, module_name, vendor_name, standard, status in all_rows:
-        key = (module_name, normalize_vendor(vendor_name), standard)
-        if key not in last_status or date_dt[pub_date] > date_dt[last_status[key][0]]:
-            last_status[key] = (pub_date, normalize_status(status))
-
-    most_recent = sorted_dates[-1]
-    disappeared = [
-        (key, last_date, last_norm)
-        for key, (last_date, last_norm) in last_status.items()
-        if last_date != most_recent and last_norm not in terminal
-    ]
-
-    if not disappeared:
-        return "<p>No modules have disappeared without reaching Finalization.</p>", 0
-
-    disappeared.sort(key=lambda x: date_dt[x[1]], reverse=True)
-
-    trs = "".join(
-        f"<tr><td>{k[0]}</td><td>{k[1]}</td><td>{k[2]}</td>"
-        f"<td>{last_norm}</td><td>{last_date}</td></tr>"
-        for k, last_date, last_norm in disappeared
-    )
-    html = (
-        f"<table><thead><tr>"
-        f"<th>Module</th><th>Vendor</th><th>Standard</th><th>Last Status</th><th>Last Seen</th>"
-        f"</tr></thead><tbody>{trs}</tbody></table>"
-    )
-    return html, len(disappeared)
-
-
 def changes_html(prev_date, new_date, added, removed, changed, reclassified=None):
     if prev_date is None:
         return "<p>Not enough data for change comparison.</p>"
@@ -703,7 +589,6 @@ def changes_html(prev_date, new_date, added, removed, changed, reclassified=None
     parts.append(section("Status Changes", changed, changed_row))
 
     return "".join(p for p in parts if p)
-
 
 
 def compute_forecasts(dates, counts):
