@@ -34,6 +34,10 @@ STATUS_COLORS = {
 }
 DEFAULT_COLOR = "#bab0ac"
 
+# U+2212 MINUS SIGN: matches the optical weight and width of "+" in the delta column,
+# unlike the ASCII hyphen.
+MINUS = "\u2212"
+
 ALL_STATUSES = [
     # Review group
     "Review Pending", "Pending Review",
@@ -869,6 +873,59 @@ def compute_queue_durations(dates, all_rows):
     return month_days
 
 
+def summary_panel_html(new_date, prev_date, counts):
+    """Render the "Today's Summary" panel: per-status counts and their change since prev_date.
+
+    A status is listed when it has modules on new_date OR had some on prev_date, so a
+    bucket that empties overnight shows one final `0 (-n)` row before dropping out of
+    the panel the following day.
+
+    Deltas are blank when a count is unchanged. On a typical day only two or three of
+    the eight statuses move, and filling the rest with placeholder glyphs buries the
+    ones that did. They are also deliberately not colour-coded by direction: a rise in
+    Finalization and a rise in Pending Resubmission mean opposite things, so red/green
+    would imply a judgement the data does not support.
+
+    prev_date is dates[-2] -- the previous *scraped* date, which is not always the
+    previous calendar day (roughly 7% of the time, with observed gaps up to 34 days).
+    It is named in the panel header so a delta spanning a gap cannot be misread.
+    """
+    day_counts = counts.get(new_date, {})
+    prev_counts = counts.get(prev_date, {}) if prev_date else {}
+    day_total = sum(day_counts.values())
+
+    def delta_cell(now, before):
+        if prev_date is None or now == before:
+            return "<td class='sum-d'></td>"
+        diff = now - before
+        sign = "+" if diff > 0 else MINUS
+        return f"<td class='sum-d'>({sign}{abs(diff):,})</td>"
+
+    rows = []
+    for status in ALL_STATUSES:
+        now = day_counts.get(status, 0)
+        before = prev_counts.get(status, 0)
+        if now == 0 and before == 0:
+            continue
+        n_class = "sum-n sum-zero" if now == 0 else "sum-n"
+        rows.append(
+            f"<tr><td><span class='swatch' style='background:{STATUS_COLORS.get(status, DEFAULT_COLOR)}'></span>{status}</td>"
+            f"<td class='{n_class}'>{now:,}</td>{delta_cell(now, before)}</tr>"
+        )
+    rows.append(
+        f"<tr class='sum-total'><td>Total</td><td class='sum-n'>{day_total:,}</td>"
+        f"{delta_cell(day_total, sum(prev_counts.values()))}</tr>"
+    )
+
+    date_line = f"{new_date} <span class='sum-vs'>(vs {prev_date})</span>" if prev_date else new_date
+    return (
+        f"<div class='chart-summary'>"
+        f"<div class='sum-title'>Today's Summary</div>"
+        f"<div class='sum-date'>{date_line}</div>"
+        f"<table class='sum-table'><tbody>{''.join(rows)}</tbody></table></div>"
+    )
+
+
 def generate_stats_html(dates, counts, all_rows):
     """Generate HTML for the statistics page (miplist-stats.html)."""
     # Extremes table
@@ -1010,21 +1067,7 @@ def generate_stats_html(dates, counts, all_rows):
 
     # Today's summary panel
     new_date = dates[-1]
-    day_counts = counts.get(new_date, {})
-    day_total = sum(day_counts.values())
-    summary_rows = "".join(
-        f"<tr><td><span class='swatch' style='background:{STATUS_COLORS.get(s, DEFAULT_COLOR)}'></span>{s}</td>"
-        f"<td class='sum-n'>{day_counts[s]:,}</td></tr>"
-        for s in ALL_STATUSES if day_counts.get(s, 0) > 0
-    )
-    summary_html = (
-        f"<div class='chart-summary'>"
-        f"<div class='sum-title'>Today's Summary</div>"
-        f"<div class='sum-date'>{new_date}</div>"
-        f"<table class='sum-table'><tbody>{summary_rows}"
-        f"<tr class='sum-total'><td>Total</td><td class='sum-n'>{day_total:,}</td></tr>"
-        f"</tbody></table></div>"
-    )
+    summary_html = summary_panel_html(new_date, dates[-2] if len(dates) > 1 else None, counts)
 
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -1072,7 +1115,7 @@ def generate_stats_html(dates, counts, all_rows):
   .chart-container {{ flex: 1; min-width: 0; background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }}
   canvas {{ max-height: 420px; }}
   .chart-summary {{
-    width: 250px; flex-shrink: 0;
+    width: 285px; flex-shrink: 0;
     background: #fff; border-radius: 8px; padding: 16px 28px;
     box-shadow: 0 1px 4px rgba(0,0,0,.08);
     display: flex; flex-direction: column; justify-content: center;
@@ -1084,6 +1127,9 @@ def generate_stats_html(dates, counts, all_rows):
   .sum-table tr:hover td {{ background: #f8f9fa; }}
   .sum-n {{ text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }}
   .sum-total td {{ border-top: 2px solid #dee2e6; font-weight: 700; padding-top: 6px; }}
+  .sum-d {{ text-align: right; font-variant-numeric: tabular-nums; color: #868e96; font-size: 0.78rem; white-space: nowrap; padding-left: 2px; }}
+  .sum-zero {{ color: #adb5bd; }}
+  .sum-vs {{ white-space: nowrap; }}
   .swatch {{ display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }}
 </style>
 </head>
@@ -1250,21 +1296,7 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
     ) if show_vendors else ""
 
     # Current-day summary panel
-    day_counts = counts.get(new_date, {})
-    day_total = sum(day_counts.values())
-    summary_rows = "".join(
-        f"<tr><td><span class='swatch' style='background:{STATUS_COLORS.get(s, DEFAULT_COLOR)}'></span>{s}</td>"
-        f"<td class='sum-n'>{day_counts[s]:,}</td></tr>"
-        for s in ALL_STATUSES if day_counts.get(s, 0) > 0
-    )
-    summary_html = (
-        f"<div class='chart-summary'>"
-        f"<div class='sum-title'>Today's Summary</div>"
-        f"<div class='sum-date'>{new_date}</div>"
-        f"<table class='sum-table'><tbody>{summary_rows}"
-        f"<tr class='sum-total'><td>Total</td><td class='sum-n'>{day_total:,}</td></tr>"
-        f"</tbody></table></div>"
-    )
+    summary_html = summary_panel_html(new_date, prev_date, counts)
 
     changes_section = changes_html(prev_date, new_date, added, removed, changed, reclassified)
     changes_title = f"Changes: {prev_date} → {new_date}" if prev_date else "Changes"
@@ -1298,7 +1330,7 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
   .chart-container {{ flex: 1; min-width: 0; background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }}
   canvas {{ max-height: 420px; }}
   .chart-summary {{
-    width: 250px; flex-shrink: 0;
+    width: 285px; flex-shrink: 0;
     background: #fff; border-radius: 8px; padding: 16px 28px;
     box-shadow: 0 1px 4px rgba(0,0,0,.08);
     display: flex; flex-direction: column; justify-content: center;
@@ -1310,6 +1342,9 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
   .sum-table tr:hover td {{ background: #f8f9fa; }}
   .sum-n {{ text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }}
   .sum-total td {{ border-top: 2px solid #dee2e6; font-weight: 700; padding-top: 6px; }}
+  .sum-d {{ text-align: right; font-variant-numeric: tabular-nums; color: #868e96; font-size: 0.78rem; white-space: nowrap; padding-left: 2px; }}
+  .sum-zero {{ color: #adb5bd; }}
+  .sum-vs {{ white-space: nowrap; }}
   .swatch {{ display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }}
   .changes {{ background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-top: 8px; }}
   table {{ border-collapse: collapse; width: 100%; font-size: 0.85rem; }}

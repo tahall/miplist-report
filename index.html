@@ -25,7 +25,7 @@
   .chart-container { flex: 1; min-width: 0; background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
   canvas { max-height: 420px; }
   .chart-summary {
-    width: 250px; flex-shrink: 0;
+    width: 285px; flex-shrink: 0;
     background: #fff; border-radius: 8px; padding: 16px 28px;
     box-shadow: 0 1px 4px rgba(0,0,0,.08);
     display: flex; flex-direction: column; justify-content: center;
@@ -37,6 +37,9 @@
   .sum-table tr:hover td { background: #f8f9fa; }
   .sum-n { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
   .sum-total td { border-top: 2px solid #dee2e6; font-weight: 700; padding-top: 6px; }
+  .sum-d { text-align: right; font-variant-numeric: tabular-nums; color: #868e96; font-size: 0.78rem; white-space: nowrap; padding-left: 2px; }
+  .sum-zero { color: #adb5bd; }
+  .sum-vs { white-space: nowrap; }
   .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
   .changes { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-top: 8px; }
   table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
@@ -91,7 +94,7 @@
   <div class="chart-container">
     <canvas id="mipChart"></canvas>
   </div>
-<div class='chart-summary'><div class='sum-title'>Today's Summary</div><div class='sum-date'>8/31/2026</div><table class='sum-table'><tbody><tr><td><span class='swatch' style='background:#4e79a7'></span>Pending Review</td><td class='sum-n'>13</td></tr><tr><td><span class='swatch' style='background:#f28e2b'></span>Review</td><td class='sum-n'>48</td></tr><tr><td><span class='swatch' style='background:#3a7d35'></span>Comment Resolution - CMVP</td><td class='sum-n'>16</td></tr><tr><td><span class='swatch' style='background:#76c068'></span>Comment Resolution - Lab</td><td class='sum-n'>76</td></tr><tr><td><span class='swatch' style='background:#c47d0e'></span>Cost Recovery</td><td class='sum-n'>1</td></tr><tr><td><span class='swatch' style='background:#d4799a'></span>Pending Resubmission</td><td class='sum-n'>19</td></tr><tr><td><span class='swatch' style='background:#9467bd'></span>Finalization</td><td class='sum-n'>8</td></tr><tr><td><span class='swatch' style='background:#bab0ac'></span>Not Displayed</td><td class='sum-n'>15</td></tr><tr class='sum-total'><td>Total</td><td class='sum-n'>196</td></tr></tbody></table></div>
+<div class='chart-summary'><div class='sum-title'>Today's Summary</div><div class='sum-date'>8/31/2026 <span class='sum-vs'>(vs 8/30/2026)</span></div><table class='sum-table'><tbody><tr><td><span class='swatch' style='background:#4e79a7'></span>Pending Review</td><td class='sum-n'>13</td><td class='sum-d'>(+3)</td></tr><tr><td><span class='swatch' style='background:#f28e2b'></span>Review</td><td class='sum-n'>48</td><td class='sum-d'></td></tr><tr><td><span class='swatch' style='background:#3a7d35'></span>Comment Resolution - CMVP</td><td class='sum-n'>16</td><td class='sum-d'>(+1)</td></tr><tr><td><span class='swatch' style='background:#76c068'></span>Comment Resolution - Lab</td><td class='sum-n'>76</td><td class='sum-d'>(−1)</td></tr><tr><td><span class='swatch' style='background:#c47d0e'></span>Cost Recovery</td><td class='sum-n'>1</td><td class='sum-d'>(−1)</td></tr><tr><td><span class='swatch' style='background:#d4799a'></span>Pending Resubmission</td><td class='sum-n'>19</td><td class='sum-d'></td></tr><tr><td><span class='swatch' style='background:#9467bd'></span>Finalization</td><td class='sum-n'>8</td><td class='sum-d'>(−1)</td></tr><tr><td><span class='swatch' style='background:#bab0ac'></span>Not Displayed</td><td class='sum-n'>15</td><td class='sum-d'></td></tr><tr class='sum-total'><td>Total</td><td class='sum-n'>196</td><td class='sum-d'>(+1)</td></tr></tbody></table></div>
 </div>
 
 <h2>Changes: 8/30/2026 → 8/31/2026</h2>
@@ -121,7 +124,7 @@
 
 
 
-<p class="footer">Generated 2026-08-31 15:16:33</p>
+<p class="footer">Generated 2026-08-31 11:49:56</p>
 <p class="footer">This is an unofficial tool and is not affiliated with or endorsed by NIST or the Internet Archive. Data is scraped from the <a href="https://csrc.nist.gov/projects/cryptographic-module-validation-program/modules-in-process/modules-in-process-list" target="_blank">NIST CMVP Modules In Process list</a>; historical data is sourced from the <a href="https://web.archive.org" target="_blank">Wayback Machine</a>. This data may not be complete or accurate. Always refer to the official NIST source for authoritative information.</p>
 
 <script>
