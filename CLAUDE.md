@@ -72,6 +72,6 @@ Legacy names (`Review Pending`, `In Review`, `Coordination`, `On Hold`) appear i
 - `STATUS_START_DATES`: statuses introduced mid-history (e.g., `"Cost Recovery"`, `"Comment Resolution - CMVP/Lab"`, `"Pending Resubmission"` — all introduced 2026-03-06). Dates before the start date are excluded so pre-existence zeros don't skew the median/low. Zero-count days on or after the start date are included.
 - `STATUS_RETIRED_DATES`: statuses no longer in use (e.g., `"Coordination"`, last seen 2026-03-04). The Current column renders `—` instead of `0` to signal retirement. Historical high/median/low are still shown for reference.
 
-**Automation:** `.github/workflows/scrape.yml` runs both scripts daily at 5 AM EST and commits `nist_modules_in_process.db`, `index.html`, and `miplist-stats.html` back to `main`.
+**Automation:** `.github/workflows/scrape.yml` runs both scripts twice daily (09:43 and 13:43 UTC) and commits `nist_modules_in_process.db`, `index.html`, and `miplist-stats.html` back to `main`. The second run is a backstop: GitHub's scheduled-event queue routinely delays these by an hour or more, so the first slot is not dependable on its own. A same-day re-run is harmless — the scraper replaces the current publish date and the commit step is a no-op when nothing changed.
 
 **`latest.db`** (gitignored): a secondary DB sometimes used locally for merging; not the canonical DB.

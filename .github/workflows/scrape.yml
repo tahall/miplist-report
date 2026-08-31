@@ -2,7 +2,12 @@ name: Scrape and Report
 
 on:
   schedule:
-    - cron: '0 10 * * *'  # 5 AM EST (10 UTC) / 6 AM EDT (10 UTC)
+    # GitHub queues scheduled events best-effort and minute :00 is the most
+    # oversubscribed slot, so both times sit off the hour. The second run is a
+    # backstop for days the first is badly delayed; the scraper replaces the
+    # current publish date, so a same-day re-run is a no-op that commits nothing.
+    - cron: '43 9 * * *'   # 5:43 AM EDT / 4:43 AM EST
+    - cron: '43 13 * * *'  # 9:43 AM EDT / 8:43 AM EST (backstop)
   workflow_dispatch:      # allow manual trigger from GitHub UI
 
 permissions:
