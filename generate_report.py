@@ -231,6 +231,115 @@ def compute_changes(dates, all_rows):
     return prev_date, new_date, added, removed, changed, reclassified
 
 
+def gap_start_indices(dates):
+    """Indices i where dates[i+1] is more than one day after dates[i]."""
+    return [
+        i for i in range(len(dates) - 1)
+        if (datetime.strptime(dates[i + 1], "%m/%d/%Y")
+            - datetime.strptime(dates[i], "%m/%d/%Y")).days > 1
+    ]
+
+
+def gap_bridge_plugin_js(gap_starts):
+    """JS for the Chart.js plugin that bridges sampling gaps on a stacked bar chart.
+
+    Each series' band is continued from the last point before a gap to the first
+    point after it: the span is filled with a staggered dot pattern in the series'
+    own colour, and its upper boundary is drawn as a dashed line. Bars are
+    untouched and no data is fabricated -- this is a separate visual layer, and
+    the stipple is what marks it as inferred rather than measured.
+
+    Both charts use it. The full-history chart covers 13% of its days and the
+    12-month chart 59%, but the 12-month chart has ~8x the pixel resolution per
+    day, so its gaps are the more conspicuous of the two: the 34-day October 2025
+    gap is 12px wide on one chart and 104px on the other.
+
+    Straight (linear) rather than stepped or curved: a step would assert the value
+    held flat and then jumped on one particular day, and a curve would imply a
+    trajectory the data cannot support. A straight line claims only "it went from
+    here to there".
+
+    Geometry comes from the rendered bar elements (y = segment top, base = segment
+    bottom) rather than from the scales, so fills and lines sit exactly on the bar
+    edges and re-stack when series are toggled off in the legend.
+    """
+    return """const gapStarts = %s;
+const gapBridges = {
+  id: 'gapBridges',
+  afterDatasetsDraw(chart) {
+    const g = chart.ctx;
+    const sets = chart.data.datasets;
+    const dpr = chart.currentDevicePixelRatio || window.devicePixelRatio || 1;
+
+    // One repeating tile per colour. Built at device resolution and scaled back
+    // down through the pattern transform, so the dots stay crisp on HiDPI
+    // displays instead of being magnified by the context's DPR scaling.
+    const patterns = new Map();
+    const dots = (color) => {
+      if (patterns.has(color)) return patterns.get(color);
+      // Staggered lattice: alternate rows offset half a step, so the dots form
+      // no vertical run. A plain square lattice reads as a visible grid once a
+      // gap is wide enough. r 0.70 at 4.24px spacing is about 8.5%% ink -- light
+      // enough to sit clearly below the solid bars, still large enough to stay
+      // crisp rather than anti-aliasing to a smudge.
+      const tile = 6, c = document.createElement('canvas');
+      c.width = c.height = Math.max(1, Math.round(tile * dpr));
+      const q = c.getContext('2d');
+      q.fillStyle = color;
+      q.beginPath(); q.arc(1.5 * dpr, 1.5 * dpr, 0.70 * dpr, 0, Math.PI * 2); q.fill();
+      q.beginPath(); q.arc(4.5 * dpr, 4.5 * dpr, 0.70 * dpr, 0, Math.PI * 2); q.fill();
+      const pat = g.createPattern(c, 'repeat');
+      if (pat && pat.setTransform) {
+        try { pat.setTransform(new DOMMatrix([1 / dpr, 0, 0, 1 / dpr, 0, 0])); } catch (e) {}
+      }
+      patterns.set(color, pat);
+      return pat;
+    };
+
+    // Series absent on both sides of a gap are skipped: their band has zero
+    // height and their boundary coincides with the series below, so filling
+    // and stroking them only darkens a shared edge.
+    const spans = [];
+    for (const j of gapStarts) {
+      for (let i = 0; i < sets.length; i++) {
+        if (!chart.isDatasetVisible(i)) continue;
+        const pts = sets[i].data;
+        if (!pts[j] || !pts[j + 1] || (pts[j].y === 0 && pts[j + 1].y === 0)) continue;
+        const m = chart.getDatasetMeta(i).data;
+        if (!m[j] || !m[j + 1]) continue;
+        spans.push([sets[i].backgroundColor, m[j], m[j + 1]]);
+      }
+    }
+
+    g.save();
+    // Fills first, then every boundary line, so a band's fill cannot clip the
+    // dashed edge of the band beneath it.
+    for (const [color, a, b] of spans) {
+      const pat = dots(color);
+      if (!pat) continue;
+      g.fillStyle = pat;
+      g.beginPath();
+      g.moveTo(a.x, a.y);
+      g.lineTo(b.x, b.y);
+      g.lineTo(b.x, b.base);
+      g.lineTo(a.x, a.base);
+      g.closePath();
+      g.fill();
+    }
+    g.setLineDash([2, 3]);
+    g.lineWidth = 1.25;
+    for (const [color, a, b] of spans) {
+      g.strokeStyle = color;
+      g.beginPath();
+      g.moveTo(a.x, a.y);
+      g.lineTo(b.x, b.y);
+      g.stroke();
+    }
+    g.restore();
+  }
+};""" % json.dumps(gap_starts)
+
+
 def build_chart_data(dates, counts):
     datasets = []
     for label, source_statuses, color in CHART_STATUS_GROUPS:
@@ -1065,17 +1174,7 @@ def generate_stats_html(dates, counts, all_rows):
     totals = [sum(counts.get(d, {}).values()) for d in dates]
     y_max = max(totals) * 1.1 if totals else 100
 
-    # Indices of points followed by a gap, for the dotted bridge overlay below.
-    # Sampling density varies ~15x across the timeline (4% of days covered in
-    # 2019, 83% in 2026), so on the full-history axis the early years read as
-    # scattered bars on empty space. The bridges show continuity without
-    # inventing bars.
-    gap_starts = [
-        i for i in range(len(dates) - 1)
-        if (datetime.strptime(dates[i + 1], "%m/%d/%Y")
-            - datetime.strptime(dates[i], "%m/%d/%Y")).days > 1
-    ]
-    gap_starts_json = json.dumps(gap_starts)
+    gap_bridge_js = gap_bridge_plugin_js(gap_start_indices(dates))
 
     # Today's summary panel
     new_date = dates[-1]
@@ -1160,97 +1259,7 @@ def generate_stats_html(dates, counts, all_rows):
 <script>
 const ctx = document.getElementById('mipChart').getContext('2d');
 
-// Dotted bridges across sampling gaps.
-// Each series' band is continued from the last point before a gap to the first
-// point after it: the span is filled with a dot pattern in the series' own
-// colour, and its upper boundary is drawn as a dashed line. Bars are untouched
-// and no data is fabricated -- this is a separate visual layer, and the stipple
-// is what marks it as inferred rather than measured.
-//
-// Straight (linear) rather than stepped or curved: a step would assert the
-// value held flat and then jumped on one particular day, and a curve would
-// imply a trajectory the data cannot support. A straight line claims only
-// "it went from here to there".
-//
-// Geometry comes from the rendered bar elements (y = segment top, base =
-// segment bottom) rather than from the scales, so the fills and lines sit
-// exactly on the bar edges and re-stack when series are toggled off in the
-// legend.
-const gapStarts = {gap_starts_json};
-const gapBridges = {{
-  id: 'gapBridges',
-  afterDatasetsDraw(chart) {{
-    const g = chart.ctx;
-    const sets = chart.data.datasets;
-    const dpr = chart.currentDevicePixelRatio || window.devicePixelRatio || 1;
-
-    // One repeating tile per colour. Built at device resolution and scaled back
-    // down through the pattern transform, so the dots stay crisp on HiDPI
-    // displays instead of being magnified by the context's DPR scaling.
-    const patterns = new Map();
-    const dots = (color) => {{
-      if (patterns.has(color)) return patterns.get(color);
-      // Staggered lattice: alternate rows offset half a step, so the dots form
-      // no vertical run. A plain square lattice reads as a visible grid once a
-      // gap is wide enough (the 193-day one is ~71px). r 0.70 at 4.24px spacing
-      // is about 8.5% ink -- light enough to sit clearly below the solid bars,
-      // still large enough to stay crisp rather than anti-aliasing to a smudge.
-      const tile = 6, c = document.createElement('canvas');
-      c.width = c.height = Math.max(1, Math.round(tile * dpr));
-      const q = c.getContext('2d');
-      q.fillStyle = color;
-      q.beginPath(); q.arc(1.5 * dpr, 1.5 * dpr, 0.70 * dpr, 0, Math.PI * 2); q.fill();
-      q.beginPath(); q.arc(4.5 * dpr, 4.5 * dpr, 0.70 * dpr, 0, Math.PI * 2); q.fill();
-      const pat = g.createPattern(c, 'repeat');
-      if (pat && pat.setTransform) {{
-        try {{ pat.setTransform(new DOMMatrix([1 / dpr, 0, 0, 1 / dpr, 0, 0])); }} catch (e) {{}}
-      }}
-      patterns.set(color, pat);
-      return pat;
-    }};
-
-    // Series absent on both sides of a gap are skipped: their band has zero
-    // height and their boundary coincides with the series below, so filling
-    // and stroking them only darkens a shared edge.
-    const spans = [];
-    for (const j of gapStarts) {{
-      for (let i = 0; i < sets.length; i++) {{
-        if (!chart.isDatasetVisible(i)) continue;
-        const pts = sets[i].data;
-        if (!pts[j] || !pts[j + 1] || (pts[j].y === 0 && pts[j + 1].y === 0)) continue;
-        const m = chart.getDatasetMeta(i).data;
-        if (!m[j] || !m[j + 1]) continue;
-        spans.push([sets[i].backgroundColor, m[j], m[j + 1]]);
-      }}
-    }}
-
-    g.save();
-    // Fills first, then every boundary line, so a band's fill cannot clip the
-    // dashed edge of the band beneath it.
-    for (const [color, a, b] of spans) {{
-      const pat = dots(color);
-      if (!pat) continue;
-      g.fillStyle = pat;
-      g.beginPath();
-      g.moveTo(a.x, a.y);
-      g.lineTo(b.x, b.y);
-      g.lineTo(b.x, b.base);
-      g.lineTo(a.x, a.base);
-      g.closePath();
-      g.fill();
-    }}
-    g.setLineDash([2, 3]);
-    g.lineWidth = 1.25;
-    for (const [color, a, b] of spans) {{
-      g.strokeStyle = color;
-      g.beginPath();
-      g.moveTo(a.x, a.y);
-      g.lineTo(b.x, b.y);
-      g.stroke();
-    }}
-    g.restore();
-  }}
-}};
+{gap_bridge_js}
 
 new Chart(ctx, {{
   type: 'bar',
@@ -1376,6 +1385,7 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
 
     prev_date, new_date, added, removed, changed, reclassified = compute_changes(dates, all_rows)
     datasets = build_chart_data(chart_dates, counts)
+    gap_bridge_js = gap_bridge_plugin_js(gap_start_indices(chart_dates))
 
     chart_datasets = json.dumps(datasets)
 
@@ -1525,8 +1535,11 @@ def generate_html(dates, counts, all_rows, chart_dates=None, check_validated=Fal
 
 <script>
 const ctx = document.getElementById('mipChart').getContext('2d');
+{gap_bridge_js}
+
 new Chart(ctx, {{
   type: 'bar',
+  plugins: [gapBridges],
   data: {{
     datasets: {chart_datasets}
   }},
