@@ -2,12 +2,18 @@ name: Scrape and Report
 
 on:
   schedule:
-    # GitHub queues scheduled events best-effort and minute :00 is the most
-    # oversubscribed slot, so both times sit off the hour. The second run is a
-    # backstop for days the first is badly delayed; the scraper replaces the
-    # current publish date, so a same-day re-run is a no-op that commits nothing.
-    - cron: '43 9 * * *'   # 5:43 AM EDT / 4:43 AM EST
-    - cron: '43 13 * * *'  # 9:43 AM EDT / 8:43 AM EST (backstop)
+    # Dispatch latency here depends on time of day, not on the minute. Measured
+    # over 1-4 Sep: the 13:43 slot ran +33m, +8m, +8m, +2m, while 09:43 ran
+    # +7h43m, +7h36m, +7h28m, +7h21m. The shape is consistent with European
+    # morning congestion, which would also explain why the old 10:00 slot ran
+    # 9-53 min late through 26 Aug and then jumped to 3.5-11 hours.
+    #
+    # 09:43 is known bad and 13:43 known good, so the primary probes the
+    # midpoint to find the edge. The backstop stays fixed: it delivers on time
+    # regardless, so a failed probe costs nothing. Move the primary only, and
+    # only after a few days of evidence.
+    - cron: '43 11 * * *'  # 7:43 AM EDT / 6:43 AM EST (probe)
+    - cron: '43 13 * * *'  # 9:43 AM EDT / 8:43 AM EST (backstop, known good)
   workflow_dispatch:      # allow manual trigger from GitHub UI
 
 permissions:
