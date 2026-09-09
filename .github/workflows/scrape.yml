@@ -2,18 +2,21 @@ name: Scrape and Report
 
 on:
   schedule:
-    # Dispatch latency here depends on time of day, not on the minute. Measured
-    # over 1-4 Sep: the 13:43 slot ran +33m, +8m, +8m, +2m, while 09:43 ran
-    # +7h43m, +7h36m, +7h28m, +7h21m. The shape is consistent with European
-    # morning congestion, which would also explain why the old 10:00 slot ran
-    # 9-53 min late through 26 Aug and then jumped to 3.5-11 hours.
+    # Do not bother retuning these times. Dispatch latency here is a per-day
+    # queue delay applied to every slot alike, not a property of the time of
+    # day. Measured 1-8 Sep, both slots drifted together: ~4h on 1-4 Sep,
+    # ~2h40m over the weekend, +4h56m/+4h40m on the 7th, +3h35m/+3h46m on the
+    # 8th. The tell is that the gap between the two daily runs tracks the gap
+    # between the two slots -- it collapsed from ~3h20m to ~1h50m the moment
+    # the slots moved from 4 hours apart to 2. An earlier reading that 13:43
+    # was a "fast slot" fitted four days and then broke; this one fits eight.
     #
-    # 09:43 is known bad and 13:43 known good, so the primary probes the
-    # midpoint to find the edge. The backstop stays fixed: it delivers on time
-    # regardless, so a failed probe costs nothing. Move the primary only, and
-    # only after a few days of evidence.
-    - cron: '43 11 * * *'  # 7:43 AM EDT / 6:43 AM EST (probe)
-    - cron: '43 13 * * *'  # 9:43 AM EDT / 8:43 AM EST (backstop, known good)
+    # Slots stay 4 hours apart so the two runs remain far enough apart to tell
+    # which is which: GitHub's API does not expose the triggering cron.
+    # A guaranteed time needs an external trigger (workflow_dispatch starts in
+    # seconds) or a real cron elsewhere -- not a different schedule here.
+    - cron: '43 9 * * *'   # 5:43 AM EDT / 4:43 AM EST
+    - cron: '43 13 * * *'  # 9:43 AM EDT / 8:43 AM EST (backstop)
   workflow_dispatch:      # allow manual trigger from GitHub UI
 
 permissions:
